@@ -15,7 +15,7 @@ import os
 import json
 from kivy.uix.screenmanager import Screen
 from kivy.app import App
-from kivy.properties import StringProperty, NumericProperty, ListProperty
+from kivy.properties import StringProperty, NumericProperty, ListProperty, BooleanProperty
 from kivy.clock import Clock
 
 from utils.data_collector import DataCollector
@@ -84,6 +84,10 @@ class ResultScreen(Screen):
     advisory_text = StringProperty("")
     confidence_value = NumericProperty(0)
     confidence_color = ListProperty(_CONFIDENT_COLOR)
+    # Hidden when the result is already auto-flagged as "Unknown" — the
+    # manual flag button is for overriding a *confident* wrong answer;
+    # showing it on top of an already-uncertain result is redundant.
+    show_flag_button = BooleanProperty(True)
 
     def on_pre_enter(self, *args):
         self.data_collector = DataCollector()
@@ -112,6 +116,7 @@ class ResultScreen(Screen):
         self.group_text = info["group"]
         self.description_text = info["description"]
         self.advisory_text = info["advisory"]
+        self.show_flag_button = (info["group"] != "Unknown")
 
         self._current_result = {
             "label": label,
@@ -136,6 +141,7 @@ class ResultScreen(Screen):
         self.advisory_text = ("Thanks — this image has been saved separately as a potential "
                                "new pest/disease not yet in our 13-class model. It will be "
                                "reviewed for inclusion in a future model update.")
+        self.show_flag_button = False
 
     def go_home(self):
         App.get_running_app().root.current = "home"

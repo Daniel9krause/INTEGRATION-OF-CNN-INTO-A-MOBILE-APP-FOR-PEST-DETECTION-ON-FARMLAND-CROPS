@@ -79,6 +79,7 @@ class HistoryScreen(Screen):
         result_screen.group_text = info["group"]
         result_screen.description_text = info["description"]
         result_screen.advisory_text = info["advisory"]
+        result_screen.show_flag_button = (info["group"] != "Unknown")
 
         app.root.current = "result"
 
