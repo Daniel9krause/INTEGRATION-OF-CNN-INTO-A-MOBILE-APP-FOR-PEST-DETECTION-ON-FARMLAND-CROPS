@@ -37,19 +37,27 @@ version = 1.0
 # etc.) whose signatures changed in Python 3.13 - "too few arguments to
 # function call" / "call to undeclared function" at compile time. Kivy
 # 2.3.1 explicitly added Python 3.13 support; 2.3.0 predates it.
-# charset-normalizer==3.3.2 (not unpinned): we don't use it directly - it's
-# a transitive dep of kivy's own "requests"/"filetype" requirements. ALL
-# "pure Python" packages (explicit or auto-discovered) get installed by
-# ONE combined p4a step (run_pymodules_install) that unconditionally omits
-# --platform/--python-version overrides - a genuine, unconditional p4a
-# bug, confirmed by testing (listing it explicitly here did NOT change
-# which install path it takes). Every OTHER package in that chain is a
-# universal "none-any" wheel and installs fine without the flags regardless;
-# charset-normalizer 3.4.0+ ships an optional mypyc-compiled platform-
-# specific wheel (including one for Android) that trips the bug. 3.3.2 is
-# the last release with ONLY a universal py3-none-any wheel, so pip has no
-# platform-specific option to (fail to) select in the first place.
+# charset-normalizer: we don't use it directly - it's a transitive dep of
+# kivy's own "requests"/"filetype" requirements, and has no built-in p4a
+# recipe. p4a's generic fallback for such "extra pure Python" packages
+# (pythonforandroid/build.py's run_pymodules_install) has two confirmed
+# bugs: it silently drops user version pins for anything without a
+# dedicated recipe (tried "charset-normalizer==3.3.2" directly in this
+# requirements= line - had zero effect on the resolved version), and its
+# final `pip install --target ...` call omits the --platform/
+# --python-version overrides it used moments earlier to *resolve*
+# packages, so it correctly rejects the Android-tagged wheel it just
+# picked for itself ("... is not a supported wheel on this platform").
+# charset-normalizer 3.4.0+ ships an optional mypyc-compiled wheel per
+# platform (including Android), which is what triggers the second bug;
+# every OTHER package in that dependency chain is a universal "none-any"
+# wheel and installs fine regardless. Rather than fight p4a's fallback
+# path, local_recipes/charset-normalizer/ gives it a real recipe (pinned
+# to 3.3.2, the last release with only a universal wheel) so it installs
+# through the same recipe-based path numpy/kivy/python3 already use
+# successfully, where version pins ARE respected.
 requirements = python3==3.13.1,hostpython3==3.13.1,kivy==2.3.1,pillow,numpy==v2.5.2,tflite-runtime,plyer,charset-normalizer==3.3.2
+p4a.local_recipes = local_recipes
 
 orientation = portrait
 fullscreen = 0
