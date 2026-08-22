@@ -149,20 +149,26 @@ workflow to build in the cloud for free:
   builds (p4a has had no tagged release between 2024.01.21 and
   2026.05.09, so an unpinned build tracks whatever bleeding-edge master
   happens to exist that day).
-- `python3==3.11.9,hostpython3==3.11.9` — this is the fix that actually
-  mattered. Every build hit the same failure regardless of the p4a pin
-  above: `OSError: [Errno 8] Exec format error` running a freshly-built
-  `pip3` inside the build's `hostpython3` "desktop" bootstrap. Root cause:
-  this p4a release's `python3` recipe defaults the Android target Python
-  to **3.14.2** — very new, and its `ensurepip` patch doesn't produce a
-  working `pip3` against it. `hostpython3` must be pinned to the exact
-  same version as `python3` (p4a hard-checks this at build time), so both
-  are pinned to 3.11.9 — a long-proven, widely-used target for Kivy/
-  Android builds. (An earlier attempt pinned `numpy==1.23.2` instead, on
-  the theory that older numpy avoids a `meson`-based build path — that
-  was a wrong diagnosis and got reverted: p4a's numpy recipe is a
-  `MesonRecipe` unconditionally regardless of numpy version, and the
-  actual failure was one level lower, in the Python build itself.)
+- `python3==3.11.9,hostpython3==3.11.9` — pinned away from this p4a
+  release's very-new default target (Python 3.14.2), on general
+  principle: it's the least battle-tested option for an Android build,
+  and third-party recipes like `tflite-runtime` are far more likely to
+  have been tested against an established version like 3.11.
+- **The actual root cause of `OSError: [Errno 8] Exec format error`
+  running a freshly-built `pip3`** (hit on every attempt, regardless of
+  numpy version, Python version, or p4a version — none of those were
+  actually it): GitHub Actions checks this repo out under a path
+  containing its own name **twice**
+  (`/home/runner/work/<repo>/<repo>/...`), and this repo's name is 73
+  characters long. Buildozer's `hostpython3` recipe generates a `pip3`
+  script whose shebang line embeds the *full absolute path* to that
+  build's own Python interpreter, many directories deeper still — the
+  resulting shebang line is ~300 characters, well past the Linux
+  kernel's ~128–256 byte shebang-line limit, so it gets silently
+  truncated/corrupted and the kernel can't execute it. Nothing about our
+  Python packages was ever the problem. Fixed in
+  `.github/workflows/build.yml` by copying the checkout to a short
+  `/tmp/fdcs` path before running buildozer.
 
 If the GitHub Actions build fails on something else entirely, paste the
 failed step's log (Actions tab → the failed run → the red "Build APK with

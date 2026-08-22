@@ -16,6 +16,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Move checkout to a short path
+        # GitHub Actions checks this repo out under a path containing its
+        # (long) name TWICE: /home/runner/work/<repo>/<repo>/. Buildozer's
+        # hostpython3 build later generates a `pip3` script whose shebang
+        # line embeds the FULL absolute path to the build's own Python
+        # interpreter - many directories deeper still. That total path
+        # exceeds the Linux kernel's ~128-256 byte shebang-line limit, so
+        # the shebang gets silently truncated/corrupted and the kernel
+        # can't execute it ("OSError: [Errno 8] Exec format error" -
+        # nothing to do with any package version, purely path length).
+        # Moving everything to a short /tmp path before building avoids it.
+        run: |
+          mkdir -p /tmp/fdcs
+          cp -r . /tmp/fdcs/
+          echo "Building from /tmp/fdcs (path length: ${#PWD} -> $(cd /tmp/fdcs && echo ${#PWD}))"
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -34,6 +50,7 @@ jobs:
           pip install buildozer cython==0.29.36
 
       - name: Build APK with Buildozer
+        working-directory: /tmp/fdcs
         run: |
           yes | buildozer -v android debug
 
@@ -41,4 +58,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: fdcs-debug-apk
-          path: bin/*.apk
+          path: /tmp/fdcs/bin/*.apk
