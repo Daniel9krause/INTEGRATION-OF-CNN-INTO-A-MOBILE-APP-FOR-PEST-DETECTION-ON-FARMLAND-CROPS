@@ -103,11 +103,31 @@ class ResultScreen(Screen):
 
     def _run_inference(self, filepath):
         app = App.get_running_app()
-        result = app.classifier.predict(filepath)
 
-        label = result["label"]
-        confidence = result["confidence"]
-        display_label, info, color = build_result_info(label, confidence)
+        try:
+            result = app.classifier.predict(filepath)
+            label = result["label"]
+            confidence = result["confidence"]
+            display_label, info, color = build_result_info(label, confidence)
+        except Exception as e:
+            # A real farmer's phone will eventually feed this a corrupted
+            # file, a screenshot, a HEIC/weird format PIL can't open, or a
+            # 0-byte file from an interrupted save. None of that should
+            # crash the app — show a clear recoverable message instead.
+            print(f"[ResultScreen] Classification failed for {filepath}: {e}")
+            self.label_text = "Couldn't analyze this image"
+            self.confidence_text = ""
+            self.confidence_value = 0
+            self.confidence_color = _UNCERTAIN_COLOR
+            self.group_text = ""
+            self.description_text = (
+                "This file couldn't be read as an image — it may be corrupted, "
+                "in an unsupported format, or something went wrong saving it."
+            )
+            self.advisory_text = "Try capturing or selecting a different photo (JPG or PNG work best)."
+            self.show_flag_button = False
+            self._current_result = None
+            return
 
         self.label_text = display_label
         self.confidence_text = f"{confidence * 100:.1f}% confidence"
@@ -124,12 +144,18 @@ class ResultScreen(Screen):
             "group": info["group"],
         }
 
-        # Persist: 1) scan history record, 2) raw image into class-labeled dataset.
+        # Persist: 1) scan history record, 2) raw image into class-labeled
+        # dataset. A failure here (disk full, storage permission revoked)
+        # shouldn't hide a successful classification result from the user —
+        # log it and move on rather than crash.
         # Note: predicted_label stores the model's raw top guess even when
         # uncertain (useful for review/retraining) — group_name="Unknown" is
         # what actually marks it as not a trusted match.
-        app.db.add_scan(filepath, label, confidence, info["group"], flagged_new=(info["group"] == "Unknown"))
-        self.data_collector.save(filepath, label, flagged_new=(info["group"] == "Unknown"))
+        try:
+            app.db.add_scan(filepath, label, confidence, info["group"], flagged_new=(info["group"] == "Unknown"))
+            self.data_collector.save(filepath, label, flagged_new=(info["group"] == "Unknown"))
+        except Exception as e:
+            print(f"[ResultScreen] Failed to persist scan (result still shown): {e}")
 
     def flag_as_new_organism(self):
         """User says 'this isn't actually what the model thinks it is' —

@@ -61,16 +61,22 @@ class HomeScreen(Screen):
         if container is None:
             return
 
-        if platform == "android":
-            from kivy.uix.camera import Camera
-            self._camera_widget = Camera(resolution=(640, 480), play=False, index=0)
-            self._using_native_camera = True
-        else:
-            from utils.camera_preview import CameraPreview
-            self._camera_widget = CameraPreview(index=0, fps=24)
-            self._using_native_camera = False
-
-        container.add_widget(self._camera_widget)
+        try:
+            if platform == "android":
+                from kivy.uix.camera import Camera
+                self._camera_widget = Camera(resolution=(640, 480), play=False, index=0)
+                self._using_native_camera = True
+            else:
+                from utils.camera_preview import CameraPreview
+                self._camera_widget = CameraPreview(index=0, fps=24)
+                self._using_native_camera = False
+            container.add_widget(self._camera_widget)
+        except Exception as e:
+            # Camera permission denied, no camera hardware, or another app
+            # already holding it — don't crash, just fall back to Upload.
+            print(f"[HomeScreen] Camera unavailable: {e}")
+            self._camera_widget = None
+            self._show_status("Camera unavailable — use Upload instead, or check camera permission in Settings.")
 
     def capture_image(self):
         """Grab the current camera frame and save it as a real image file."""
@@ -81,15 +87,21 @@ class HomeScreen(Screen):
         filename = f"scan_{int(time.time())}.jpg"
         filepath = os.path.join(CAPTURE_DIR, filename)
 
-        if self._using_native_camera:
-            if self._camera_widget.texture is None:
-                self._show_status("Camera not ready yet — try again in a second.")
-                return
-            self._camera_widget.export_to_png(filepath)
-        else:
-            if not self._camera_widget.capture_to_file(filepath):
-                self._show_status("Camera not ready yet — try again in a second.")
-                return
+        try:
+            if self._using_native_camera:
+                if self._camera_widget.texture is None:
+                    self._show_status("Camera not ready yet — try again in a second.")
+                    return
+                self._camera_widget.export_to_png(filepath)
+            else:
+                if not self._camera_widget.capture_to_file(filepath):
+                    self._show_status("Camera not ready yet — try again in a second.")
+                    return
+        except Exception as e:
+            # Disk full, storage permission revoked mid-session, etc.
+            print(f"[HomeScreen] Capture failed: {e}")
+            self._show_status("Couldn't save the photo — check storage space and try again.")
+            return
 
         self._go_to_result(filepath)
 
