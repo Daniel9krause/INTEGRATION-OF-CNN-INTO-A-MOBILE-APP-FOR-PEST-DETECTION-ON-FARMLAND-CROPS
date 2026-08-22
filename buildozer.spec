@@ -15,19 +15,24 @@ version = 1.0
 # tflite-runtime is loaded via a recipe/wheel on Android; numpy & pillow are
 # needed for preprocessing; camera + android permissions handled by pyjnius;
 # plyer backs the Home screen's "Upload" button (native gallery/file picker).
-# python3/hostpython3 are pinned to 3.12.8 (must match each other exactly -
-# p4a hard-checks this). Originally pinned to 3.11.9 thinking Python 3.14
-# (this p4a release's default) was the cause of a corrupted hostpython3
-# "desktop" pip3 - it wasn't (see .github/workflows/build.yml for the real
-# cause, a checkout-path length issue, unrelated to Python version). 3.12
-# is required because numpy>=2.4 needs Python >=3.12 to build; kept below
-# 3.14 as the more battle-tested option for third-party recipes.
+# python3/hostpython3 are pinned to 3.13.1 (must match each other exactly -
+# p4a hard-checks this). Went through 3.11.9 (wrong theory: thought Python
+# 3.14, this p4a release's default, caused a corrupted hostpython3 "desktop"
+# pip3 - the real cause was a checkout-path length issue, unrelated to
+# Python version, fixed in .github/workflows/build.yml) and 3.12.8 (needed
+# for numpy>=2.4's Python>=3.12 requirement, but CPython's stock Modules/
+# grpmodule.c unconditionally calls setgrent/getgrent/endgrent, which
+# Android's libc doesn't implement - "not available on Android" per
+# Python's own grp module docs. That gap was specifically fixed as part of
+# CPython's own official Android platform support work (PEP 738), which
+# targeted 3.13, so 3.13+ should have the real configure-level fix rather
+# than just unconditionally trying to build grp.
 # numpy IS pinned (to v2.5.2, note p4a's numpy recipe fetches by git tag so
 # this needs the "v" prefix): the recipe's own default, numpy 2.3.0, fails
 # to compile for Android — its unique.cpp is missing #include <unordered_map>,
 # a confirmed numpy bug (fixed upstream in numpy/numpy#29662, merged Sept
 # 2025). Any numpy release from after that fix works; 2.5.2 is current.
-requirements = python3==3.12.8,hostpython3==3.12.8,kivy==2.3.0,pillow,numpy==v2.5.2,tflite-runtime,plyer
+requirements = python3==3.13.1,hostpython3==3.13.1,kivy==2.3.0,pillow,numpy==v2.5.2,tflite-runtime,plyer
 
 orientation = portrait
 fullscreen = 0

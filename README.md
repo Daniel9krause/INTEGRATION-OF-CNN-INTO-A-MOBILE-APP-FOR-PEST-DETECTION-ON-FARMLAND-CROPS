@@ -149,12 +149,16 @@ workflow to build in the cloud for free:
   builds (p4a has had no tagged release between 2024.01.21 and
   2026.05.09, so an unpinned build tracks whatever bleeding-edge master
   happens to exist that day).
-- `python3==3.12.8,hostpython3==3.12.8` — pinned away from this p4a
-  release's very-new default target (Python 3.14.2). Originally pinned to
-  3.11.9 on the (wrong, see below) theory that 3.14 was the cause of the
-  `pip3` failure; bumped to 3.12 because `numpy>=2.4` requires Python
-  `>=3.12` to build — kept below 3.14 as the more battle-tested option
-  for third-party recipes like `tflite-runtime`.
+- `python3==3.13.1,hostpython3==3.13.1` — went through 3.11.9 (wrong
+  theory that Python 3.14, this p4a release's default, caused the `pip3`
+  failure below) and 3.12.8 (needed for `numpy>=2.4`'s `Python>=3.12`
+  requirement, but hit a *different* build failure: CPython's stock
+  `Modules/grpmodule.c` unconditionally calls `setgrent`/`getgrent`/
+  `endgrent`, which Android's libc doesn't implement — `grp` is
+  officially "not available on Android" per Python's own docs. That gap
+  was fixed as part of CPython's own official Android platform support
+  work ([PEP 738](https://peps.python.org/pep-0738/)), which targeted
+  3.13 — so 3.13+ has the real `configure`-level fix.
 - **The actual root cause of `OSError: [Errno 8] Exec format error`
   running a freshly-built `pip3`** (hit on every attempt, regardless of
   numpy version, Python version, or p4a version — none of those were
