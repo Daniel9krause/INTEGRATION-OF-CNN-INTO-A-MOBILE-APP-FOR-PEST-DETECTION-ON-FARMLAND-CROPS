@@ -32,7 +32,12 @@ version = 1.0
 # to compile for Android — its unique.cpp is missing #include <unordered_map>,
 # a confirmed numpy bug (fixed upstream in numpy/numpy#29662, merged Sept
 # 2025). Any numpy release from after that fix works; 2.5.2 is current.
-requirements = python3==3.13.1,hostpython3==3.13.1,kivy==2.3.0,pillow,numpy==v2.5.2,tflite-runtime,plyer
+# kivy==2.3.1 (not 2.3.0): 2.3.0's Cython-generated C code calls CPython
+# internal APIs (_PyUnicode_FastCopyCharacters, _PyDict_SetItem_KnownHash,
+# etc.) whose signatures changed in Python 3.13 - "too few arguments to
+# function call" / "call to undeclared function" at compile time. Kivy
+# 2.3.1 explicitly added Python 3.13 support; 2.3.0 predates it.
+requirements = python3==3.13.1,hostpython3==3.13.1,kivy==2.3.1,pillow,numpy==v2.5.2,tflite-runtime,plyer
 
 orientation = portrait
 fullscreen = 0

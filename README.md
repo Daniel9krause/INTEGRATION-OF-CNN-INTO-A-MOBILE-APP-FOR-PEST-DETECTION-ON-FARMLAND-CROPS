@@ -167,6 +167,12 @@ workflow to build in the cloud for free:
   matching `android/ndk` and `llvm-project` issue reports). NDK 25b
   bundles clang-14; 27d (the current NDK LTS release) bundles a much
   newer clang.
+- `kivy==2.3.1` (not `2.3.0`) — `2.3.0`'s Cython-generated C code calls
+  CPython internal APIs (`_PyUnicode_FastCopyCharacters`,
+  `_PyDict_SetItem_KnownHash`, etc.) whose signatures changed in Python
+  3.13, producing compile errors across most of Kivy's core (`_event.c`,
+  `_window_sdl2.c`, `vertex_instructions.c`, ...). Kivy 2.3.1 explicitly
+  added Python 3.13 support; `requirements-desktop.txt` bumped to match.
 - **The actual root cause of `OSError: [Errno 8] Exec format error`
   running a freshly-built `pip3`** (hit on every attempt, regardless of
   numpy version, Python version, or p4a version — none of those were

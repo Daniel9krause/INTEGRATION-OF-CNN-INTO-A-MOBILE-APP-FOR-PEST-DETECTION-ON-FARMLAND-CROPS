@@ -1,5 +1,5 @@
 # For running/testing FDCS on your PC (Windows/Linux/Mac) before building the APK
-kivy==2.3.0
+kivy==2.3.1     # matches buildozer.spec's pin (2.3.0 doesn't support Python 3.13)
 pillow
 numpy
 tensorflow-cpu==2.15.0
