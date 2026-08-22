@@ -173,19 +173,23 @@ workflow to build in the cloud for free:
   3.13, producing compile errors across most of Kivy's core (`_event.c`,
   `_window_sdl2.c`, `vertex_instructions.c`, ...). Kivy 2.3.1 explicitly
   added Python 3.13 support; `requirements-desktop.txt` bumped to match.
-- `charset-normalizer` listed explicitly in `requirements =` — we don't
-  use it directly, it's a transitive dependency of Kivy's own `requests`/
-  `filetype` requirements. p4a's generic pip-install step for
-  auto-discovered pure-Python extras (packages with no dedicated recipe)
+- `charset-normalizer==3.3.2` — we don't use it directly, it's a
+  transitive dependency of Kivy's own `requests`/`filetype` requirements.
+  ALL "pure Python" packages (explicit or auto-discovered) get installed
+  by one combined p4a step (`run_pymodules_install`) that unconditionally
   omits the `--platform`/`--python-version` overrides it used moments
-  earlier to *resolve* them, so its own freshly-upgraded pip correctly
-  rejects the Android-tagged wheel it just picked (`ERROR: ...whl is not
-  a supported wheel on this platform`). Every other package in that
-  chain (`certifi`, `chardet`, `filetype`, `idna`, `six`, `urllib3`) is a
-  universal "none-any" wheel and installs fine regardless — this is the
-  one with a platform-specific wheel. Listing it as a top-level
-  requirement routes it through the same install path `pillow`/`plyer`
-  already succeed through.
+  earlier to *resolve* them — a genuine, unconditional p4a bug (confirmed
+  by testing: listing the package explicitly, tried first, did **not**
+  change which install path it took). Its own freshly-upgraded pip
+  correctly rejects the Android-tagged wheel it resolved for itself
+  (`ERROR: ...whl is not a supported wheel on this platform`). Every
+  other package in that chain (`certifi`, `chardet`, `filetype`, `idna`,
+  `six`, `urllib3`) is a universal "none-any" wheel and installs fine
+  regardless of the missing flags; `charset-normalizer` 3.4.0+ is the one
+  that ships an optional mypyc-compiled platform-specific wheel
+  (including an Android one). 3.3.2 is the last release with *only* a
+  universal `py3-none-any` wheel, so there's no platform-specific option
+  for pip to fail to select in the first place.
 - **The actual root cause of `OSError: [Errno 8] Exec format error`
   running a freshly-built `pip3`** (hit on every attempt, regardless of
   numpy version, Python version, or p4a version — none of those were

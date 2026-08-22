@@ -37,17 +37,19 @@ version = 1.0
 # etc.) whose signatures changed in Python 3.13 - "too few arguments to
 # function call" / "call to undeclared function" at compile time. Kivy
 # 2.3.1 explicitly added Python 3.13 support; 2.3.0 predates it.
-# charset-normalizer is listed explicitly (we don't use it directly - it's
-# a transitive dep of kivy's own "requests"/"filetype" requirements). p4a's
-# generic pip-install step for auto-discovered pure-Python extras omits
-# --platform/--python-version overrides, so pip correctly rejects the
-# android-tagged wheel it resolved for itself moments earlier ("not a
-# supported wheel on this platform") - every OTHER package in that chain
-# is a universal "none-any" wheel and installs fine regardless; this is
-# the one with a platform-specific wheel. Listing it as a top-level
-# requirement routes it through the same install path pillow/plyer
-# already succeed through.
-requirements = python3==3.13.1,hostpython3==3.13.1,kivy==2.3.1,pillow,numpy==v2.5.2,tflite-runtime,plyer,charset-normalizer
+# charset-normalizer==3.3.2 (not unpinned): we don't use it directly - it's
+# a transitive dep of kivy's own "requests"/"filetype" requirements. ALL
+# "pure Python" packages (explicit or auto-discovered) get installed by
+# ONE combined p4a step (run_pymodules_install) that unconditionally omits
+# --platform/--python-version overrides - a genuine, unconditional p4a
+# bug, confirmed by testing (listing it explicitly here did NOT change
+# which install path it takes). Every OTHER package in that chain is a
+# universal "none-any" wheel and installs fine without the flags regardless;
+# charset-normalizer 3.4.0+ ships an optional mypyc-compiled platform-
+# specific wheel (including one for Android) that trips the bug. 3.3.2 is
+# the last release with ONLY a universal py3-none-any wheel, so pip has no
+# platform-specific option to (fail to) select in the first place.
+requirements = python3==3.13.1,hostpython3==3.13.1,kivy==2.3.1,pillow,numpy==v2.5.2,tflite-runtime,plyer,charset-normalizer==3.3.2
 
 orientation = portrait
 fullscreen = 0
