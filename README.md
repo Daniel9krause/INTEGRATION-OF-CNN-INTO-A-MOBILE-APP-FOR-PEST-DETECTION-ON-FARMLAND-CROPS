@@ -144,14 +144,18 @@ workflow to build in the cloud for free:
   python-for-android recipe for `tflite-runtime` is known to fail on
   32-bit `armeabi-v7a` builds ([reference](https://github.com/Android-for-Python/c4k_tflite_example)),
   and every phone from roughly the last 7 years is arm64 anyway.
-- `numpy==1.23.2` is pinned in `requirements =`. An unversioned `numpy`
-  resolves to a modern release that builds via `meson`, and
-  python-for-android's bootstrap for that build path was broken as of
-  this project (failed with `OSError: [Errno 8] Exec format error`
-  trying to run a freshly-built `pip3` inside the build's hostpython3
-  sandbox — a known, documented p4a issue with unpinned `numpy`). 1.23.2
-  predates that switch and uses p4a's older, battle-tested distutils-based
-  numpy recipe instead.
+- `p4a.branch = master` + `p4a.commit = v2026.05.09` pin
+  python-for-android to its last tagged stable release. Left unpinned,
+  buildozer tracks p4a's bleeding-edge `master` branch — which had a
+  regression breaking numpy's build (`OSError: [Errno 8] Exec format
+  error` running a freshly-built `pip3` inside the build's hostpython3
+  bootstrap). Note: an earlier attempt at fixing this pinned
+  `numpy==1.23.2` instead, on the theory that older numpy avoids a
+  `meson`-based build path — that was wrong and got reverted: p4a's numpy
+  recipe is a `MesonRecipe` unconditionally (hardcoded `version =
+  "v2.3.0"` inside the recipe itself), so every numpy version goes
+  through the same meson path regardless, and pre-meson numpy versions
+  don't even have the `meson.build` file that requires.
 
 If the GitHub Actions build fails on something else entirely, paste the
 failed step's log (Actions tab → the failed run → the red "Build APK with

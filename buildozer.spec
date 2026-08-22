@@ -15,12 +15,13 @@ version = 1.0
 # tflite-runtime is loaded via a recipe/wheel on Android; numpy & pillow are
 # needed for preprocessing; camera + android permissions handled by pyjnius;
 # plyer backs the Home screen's "Upload" button (native gallery/file picker).
-# numpy is PINNED: an unversioned "numpy" resolves to a modern release that
-# builds via meson, and python-for-android's bootstrap for that build path
-# is currently broken (fails with "Exec format error" building numpy's own
-# hostpython3 prerequisites). 1.23.2 predates that meson switch and uses
-# p4a's much older, battle-tested distutils-based numpy recipe instead.
-requirements = python3,kivy==2.3.0,pillow,numpy==1.23.2,tflite-runtime,plyer
+# numpy is left unpinned deliberately: p4a's numpy recipe (kivy/python-for-
+# android) is a MesonRecipe with version="v2.3.0" hardcoded — every numpy
+# version builds through the same meson path regardless, so pinning an
+# older numpy (tried, reverted) doesn't help and can actively break things
+# (old numpy has no meson.build at all). The real fix is pinning p4a itself
+# — see p4a.branch/p4a.commit below.
+requirements = python3,kivy==2.3.0,pillow,numpy,tflite-runtime,plyer
 
 orientation = portrait
 fullscreen = 0
@@ -37,6 +38,15 @@ android.ndk = 25b
 # Every phone from the last ~7 years is arm64, so this isn't a real limitation.
 android.archs = arm64-v8a
 android.allow_backup = True
+
+# Pin python-for-android to its last tagged stable release instead of the
+# default unpinned "master" branch. p4a has had NO tagged release between
+# 2024.01.21 and 2026.05.09 — meaning every unpinned build tracks whatever
+# bleeding-edge master happens to be that day. Our first two builds hit a
+# master-branch regression in the numpy/MesonRecipe hostpython3 bootstrap
+# ("Exec format error" building a native pip3) that this pin avoids.
+p4a.branch = master
+p4a.commit = v2026.05.09
 
 [buildozer]
 log_level = 2
