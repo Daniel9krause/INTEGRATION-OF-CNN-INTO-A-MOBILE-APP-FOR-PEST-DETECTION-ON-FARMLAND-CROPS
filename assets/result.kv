@@ -1,0 +1,87 @@
+<ResultScreen>:
+    ScrollView:
+        BoxLayout:
+            orientation: "vertical"
+            size_hint_y: None
+            height: self.minimum_height
+            padding: dp(14)
+            spacing: dp(10)
+
+            Image:
+                source: root.image_path
+                size_hint_y: None
+                height: dp(240)
+                allow_stretch: True
+
+            Label:
+                text: root.label_text
+                bold: True
+                font_size: "20sp"
+                size_hint_y: None
+                height: dp(32)
+
+            Label:
+                text: root.confidence_text
+                font_size: "14sp"
+                color: 0.2, 0.6, 0.2, 1
+                size_hint_y: None
+                height: dp(22)
+
+            ProgressBar:
+                max: 100
+                value: root.confidence_value
+                size_hint_y: None
+                height: dp(14)
+
+            Label:
+                text: "Organism Group: [b]" + root.group_text + "[/b]"
+                markup: True
+                size_hint_y: None
+                height: dp(26)
+                halign: "left"
+                text_size: self.width, None
+
+            Label:
+                text: root.description_text
+                size_hint_y: None
+                height: dp(70)
+                halign: "left"
+                valign: "top"
+                text_size: self.width, None
+                font_size: "13sp"
+
+            BoxLayout:
+                size_hint_y: None
+                height: dp(90)
+                canvas.before:
+                    Color:
+                        rgba: 0.9, 0.97, 0.9, 1
+                    Rectangle:
+                        pos: self.pos
+                        size: self.size
+                Label:
+                    text: "Advisory:\n" + root.advisory_text
+                    color: 0, 0, 0, 1
+                    halign: "left"
+                    valign: "top"
+                    text_size: self.width - dp(16), None
+                    padding: dp(8), dp(8)
+
+            Button:
+                text: "This doesn't look right — flag as new/unknown organism"
+                size_hint_y: None
+                height: dp(44)
+                on_release: root.flag_as_new_organism()
+
+            BoxLayout:
+                size_hint_y: None
+                height: dp(50)
+                spacing: dp(10)
+
+                Button:
+                    text: "Scan Another"
+                    on_release: root.go_home()
+
+                Button:
+                    text: "View History"
+                    on_release: root.go_to_history()

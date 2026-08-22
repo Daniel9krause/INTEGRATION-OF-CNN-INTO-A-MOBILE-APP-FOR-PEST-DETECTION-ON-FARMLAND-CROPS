@@ -1,0 +1,80 @@
+{
+  "Healthy Leaf": {
+    "group": "No Threat",
+    "type": "N/A",
+    "description": "The leaf shows no visible signs of pest damage or disease. Crop appears healthy.",
+    "advisory": "Continue routine monitoring. Maintain good field hygiene, proper spacing, and balanced fertilization to keep plants resilient."
+  },
+  "Aphids": {
+    "group": "Insect Pest",
+    "type": "Sap-sucking insect (Order: Hemiptera)",
+    "description": "Small, soft-bodied insects that cluster on new growth and undersides of leaves, sucking plant sap and excreting honeydew.",
+    "advisory": "Introduce natural predators (ladybirds, lacewings). Use insecticidal soap or neem oil spray for moderate infestations. Avoid excess nitrogen fertilizer, which encourages aphid growth."
+  },
+  "Armyworm": {
+    "group": "Insect Pest",
+    "type": "Caterpillar / Larval stage moth (Order: Lepidoptera)",
+    "description": "Voracious leaf-feeding caterpillars that move in large numbers ('armies'), rapidly defoliating crops, especially maize and cereals.",
+    "advisory": "Scout fields early morning or late evening. Apply Bacillus thuringiensis (Bt) biopesticide or approved insecticide. Handpick and destroy egg masses where feasible."
+  },
+  "Bollworm": {
+    "group": "Insect Pest",
+    "type": "Caterpillar / Larval stage moth (Order: Lepidoptera)",
+    "description": "Larvae bore into fruiting structures (bolls, pods, fruits), causing internal damage that is often hidden until harvest.",
+    "advisory": "Use pheromone traps for early detection. Rotate crops to break the pest life cycle. Apply targeted insecticide during early larval stages before boring begins."
+  },
+  "Grasshopper": {
+    "group": "Insect Pest",
+    "type": "Chewing insect (Order: Orthoptera)",
+    "description": "Chews irregular holes in leaves and can cause severe defoliation in large swarms.",
+    "advisory": "Encourage natural predators (birds, parasitic wasps). Use barrier crops or netting for small plots. Apply approved contact insecticide for large infestations."
+  },
+  "Stem Borer": {
+    "group": "Insect Pest",
+    "type": "Caterpillar / Larval stage moth (Order: Lepidoptera)",
+    "description": "Larvae tunnel inside plant stems, causing wilting of the central shoot ('dead heart') and reduced yield.",
+    "advisory": "Destroy and remove crop residue after harvest to eliminate overwintering larvae. Use resistant varieties. Apply systemic insecticide at early vegetative stage if infestation is confirmed."
+  },
+  "Whitefly": {
+    "group": "Insect Pest",
+    "type": "Sap-sucking insect (Order: Hemiptera)",
+    "description": "Small white flying insects found on leaf undersides; feeding weakens plants and they act as vectors for viral diseases.",
+    "advisory": "Use yellow sticky traps to monitor and reduce populations. Apply insecticidal soap or neem-based spray. Remove and destroy heavily infested leaves."
+  },
+  "Leaf Blight": {
+    "group": "Fungal Disease",
+    "type": "Fungal pathogen",
+    "description": "Rapid browning and death of leaf tissue, often starting at leaf edges or tips and spreading inward.",
+    "advisory": "Improve field drainage and airflow between plants. Remove and burn infected plant debris. Apply an appropriate fungicide (e.g., mancozeb-based) at first sign of spread."
+  },
+  "Leaf Spot": {
+    "group": "Fungal Disease",
+    "type": "Fungal pathogen",
+    "description": "Small, circular brown or black spots on leaves that can merge and cause premature leaf drop.",
+    "advisory": "Avoid overhead irrigation to reduce leaf wetness duration. Practice crop rotation. Apply copper-based or systemic fungicide if spread is significant."
+  },
+  "Mosaic Virus": {
+    "group": "Viral Disease",
+    "type": "Plant virus (often vectored by aphids/whiteflies)",
+    "description": "Mottled yellow-green patterns on leaves with distorted growth; no cure once infected.",
+    "advisory": "Remove and destroy infected plants immediately to prevent spread. Control insect vectors (aphids, whiteflies). Use certified virus-free seeds/seedlings next season."
+  },
+  "Beetle": {
+    "group": "Insect Pest",
+    "type": "Chewing insect (Order: Coleoptera)",
+    "description": "Adults and larvae chew irregular holes in leaves, flowers, or roots depending on species; heavy infestations can skeletonize foliage.",
+    "advisory": "Hand-pick and destroy visible beetles/larvae for small plots. Use row covers during peak emergence periods. Apply an approved contact or systemic insecticide for large infestations, and rotate crops to disrupt soil-dwelling life stages."
+  },
+  "Moth": {
+    "group": "Insect Pest",
+    "type": "Adult stage of Lepidoptera (moths, whose larvae are the crop-damaging caterpillars)",
+    "description": "Adult moths themselves rarely feed on crops but lay the eggs that hatch into leaf- and stem-boring caterpillars; their presence signals an incoming larval infestation.",
+    "advisory": "Use pheromone or light traps to monitor and reduce adult populations before they lay eggs. Scout for and destroy egg clusters on leaf undersides. Time any insecticide application to the early larval stage for best control."
+  },
+  "Weevil": {
+    "group": "Insect Pest",
+    "type": "Snout beetle (Order: Coleoptera, family Curculionidae)",
+    "description": "Adults chew small round holes in leaves, stems, or pods, while larvae often bore into stems, roots, or stored grain, causing damage that's easy to miss until it's severe.",
+    "advisory": "Practice good field sanitation and crop rotation to break the life cycle. Store harvested grain in sealed, dry containers to prevent weevil infestation post-harvest. Apply an approved insecticide at first sign of adult activity."
+  }
+}

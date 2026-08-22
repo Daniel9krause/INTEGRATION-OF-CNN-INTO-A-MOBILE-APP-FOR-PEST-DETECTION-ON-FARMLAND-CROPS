@@ -1,0 +1,41 @@
+<HistoryScreen>:
+    BoxLayout:
+        orientation: "vertical"
+
+        BoxLayout:
+            size_hint_y: None
+            height: dp(50)
+            padding: dp(10), dp(6)
+            canvas.before:
+                Color:
+                    rgba: 0.13, 0.45, 0.20, 1
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+            Label:
+                text: "Scan History"
+                bold: True
+                font_size: "16sp"
+
+        ScrollView:
+            BoxLayout:
+                id: history_list
+                orientation: "vertical"
+                size_hint_y: None
+                height: self.minimum_height
+                spacing: dp(4)
+                padding: dp(6)
+
+        BoxLayout:
+            size_hint_y: None
+            height: dp(56)
+            padding: dp(10)
+            spacing: dp(10)
+
+            Button:
+                text: "Back"
+                on_release: root.go_home()
+
+            Button:
+                text: "Clear History"
+                on_release: root.clear_history()

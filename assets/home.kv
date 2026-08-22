@@ -1,0 +1,56 @@
+<HomeScreen>:
+    BoxLayout:
+        orientation: "vertical"
+
+        BoxLayout:
+            size_hint_y: None
+            height: dp(56)
+            padding: dp(10), dp(6)
+            canvas.before:
+                Color:
+                    rgba: 0.13, 0.45, 0.20, 1
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+            Label:
+                text: "Farm_land Detect & Classification"
+                bold: True
+                font_size: "16sp"
+
+        BoxLayout:
+            id: camera_container
+            # The actual camera widget (Kivy Camera on Android, or
+            # CameraPreview on desktop) is added here at runtime in
+            # home_screen.py, since which one to use depends on platform.
+
+        Label:
+            id: status_label
+            text: ""
+            size_hint_y: None
+            height: dp(24)
+            color: 1, 0.3, 0.3, 1
+
+        BoxLayout:
+            size_hint_y: None
+            height: dp(70)
+            padding: dp(10)
+            spacing: dp(10)
+
+            Button:
+                text: "History"
+                on_release: root.go_to_history()
+
+            Button:
+                text: "Upload"
+                on_release: root.pick_image()
+
+            Button:
+                text: "CAPTURE"
+                bold: True
+                font_size: "16sp"
+                background_color: 0.13, 0.55, 0.25, 1
+                on_release: root.capture_image()
+
+            Button:
+                text: "Advisory"
+                on_release: root.go_to_advisory()

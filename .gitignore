@@ -1,0 +1,17 @@
+.buildozer/
+bin/
+storage/
+collected_data/
+__pycache__/
+*.pyc
+*.apk
+.venv/
+venv/
+
+# Raw training images: large, sourced from public datasets already linked
+# in data/dataset/README.md — no need to version them. The trained
+# model/pest_model.tflite (the actual deliverable) IS committed.
+data/dataset/*
+!data/dataset/README.md
+
+.claude/

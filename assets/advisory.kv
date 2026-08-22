@@ -1,0 +1,39 @@
+<AdvisoryScreen>:
+    BoxLayout:
+        orientation: "vertical"
+
+        BoxLayout:
+            size_hint_y: None
+            height: dp(50)
+            padding: dp(10), dp(6)
+            canvas.before:
+                Color:
+                    rgba: 0.13, 0.45, 0.20, 1
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+            Label:
+                text: "Pest & Disease Advisory Library"
+                bold: True
+                font_size: "15sp"
+
+        ScrollView:
+            BoxLayout:
+                id: advisory_list
+                orientation: "vertical"
+                size_hint_y: None
+                height: self.minimum_height
+                spacing: dp(2)
+                padding: dp(6)
+                canvas.before:
+                    Color:
+                        rgba: 1, 1, 1, 1
+                    Rectangle:
+                        pos: self.pos
+                        size: self.size
+
+        Button:
+            text: "Back"
+            size_hint_y: None
+            height: dp(50)
+            on_release: root.go_home()
