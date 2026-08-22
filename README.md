@@ -165,10 +165,17 @@ workflow to build in the cloud for free:
   build's own Python interpreter, many directories deeper still — the
   resulting shebang line is ~300 characters, well past the Linux
   kernel's ~128–256 byte shebang-line limit, so it gets silently
-  truncated/corrupted and the kernel can't execute it. Nothing about our
-  Python packages was ever the problem. Fixed in
+  truncated/corrupted and the kernel can't execute it. Fixed in
   `.github/workflows/build.yml` by copying the checkout to a short
   `/tmp/fdcs` path before running buildozer.
+- `numpy==v2.5.2` (note the "v" prefix — p4a's numpy recipe fetches numpy
+  via a git tag checkout, so it needs to match numpy's actual tag format
+  exactly). Once the shebang-length issue above was fixed, the build got
+  much further and hit a real numpy bug: the recipe's own default,
+  numpy 2.3.0, is missing `#include <unordered_map>` in
+  `numpy/_core/src/multiarray/unique.cpp`, a confirmed upstream bug fixed
+  in [numpy/numpy#29662](https://github.com/numpy/numpy/pull/29662)
+  (merged Sept 2025). Any numpy release after that fix works.
 
 If the GitHub Actions build fails on something else entirely, paste the
 failed step's log (Actions tab → the failed run → the red "Build APK with

@@ -15,19 +15,18 @@ version = 1.0
 # tflite-runtime is loaded via a recipe/wheel on Android; numpy & pillow are
 # needed for preprocessing; camera + android permissions handled by pyjnius;
 # plyer backs the Home screen's "Upload" button (native gallery/file picker).
-# numpy is left unpinned deliberately: p4a's numpy recipe (kivy/python-for-
-# android) is a MesonRecipe with version="v2.3.0" hardcoded — every numpy
-# version builds through the same meson path regardless, so pinning an
-# older numpy (tried, reverted) doesn't help and can actively break things
-# (old numpy has no meson.build at all).
-# python3/hostpython3 ARE pinned: this p4a release defaults its Android
-# target Python to 3.14.2, which is what was actually breaking the build
-# (a corrupted hostpython3 "desktop" pip3 — the ensurepip patch p4a applies
-# doesn't produce a working binary against 3.14). hostpython3's version
-# must exactly match python3's (p4a enforces this with a hard check), so
-# both are pinned together to 3.11.9 — a long-proven, widely-used target
-# for Kivy/Android builds, well clear of 3.14's patch-gated code paths.
-requirements = python3==3.11.9,hostpython3==3.11.9,kivy==2.3.0,pillow,numpy,tflite-runtime,plyer
+# python3/hostpython3 are pinned: this p4a release defaults its Android
+# target Python to 3.14.2, which was breaking an earlier build (a corrupted
+# hostpython3 "desktop" pip3). hostpython3's version must exactly match
+# python3's (p4a enforces this with a hard check), so both are pinned
+# together to 3.11.9 — a long-proven, widely-used target for Kivy/Android
+# builds.
+# numpy IS pinned (to v2.5.2, note p4a's numpy recipe fetches by git tag so
+# this needs the "v" prefix): the recipe's own default, numpy 2.3.0, fails
+# to compile for Android — its unique.cpp is missing #include <unordered_map>,
+# a confirmed numpy bug (fixed upstream in numpy/numpy#29662, merged Sept
+# 2025). Any numpy release from after that fix works; 2.5.2 is current.
+requirements = python3==3.11.9,hostpython3==3.11.9,kivy==2.3.0,pillow,numpy==v2.5.2,tflite-runtime,plyer
 
 orientation = portrait
 fullscreen = 0
