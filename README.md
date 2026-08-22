@@ -149,11 +149,12 @@ workflow to build in the cloud for free:
   builds (p4a has had no tagged release between 2024.01.21 and
   2026.05.09, so an unpinned build tracks whatever bleeding-edge master
   happens to exist that day).
-- `python3==3.11.9,hostpython3==3.11.9` — pinned away from this p4a
-  release's very-new default target (Python 3.14.2), on general
-  principle: it's the least battle-tested option for an Android build,
-  and third-party recipes like `tflite-runtime` are far more likely to
-  have been tested against an established version like 3.11.
+- `python3==3.12.8,hostpython3==3.12.8` — pinned away from this p4a
+  release's very-new default target (Python 3.14.2). Originally pinned to
+  3.11.9 on the (wrong, see below) theory that 3.14 was the cause of the
+  `pip3` failure; bumped to 3.12 because `numpy>=2.4` requires Python
+  `>=3.12` to build — kept below 3.14 as the more battle-tested option
+  for third-party recipes like `tflite-runtime`.
 - **The actual root cause of `OSError: [Errno 8] Exec format error`
   running a freshly-built `pip3`** (hit on every attempt, regardless of
   numpy version, Python version, or p4a version — none of those were

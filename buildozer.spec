@@ -15,18 +15,19 @@ version = 1.0
 # tflite-runtime is loaded via a recipe/wheel on Android; numpy & pillow are
 # needed for preprocessing; camera + android permissions handled by pyjnius;
 # plyer backs the Home screen's "Upload" button (native gallery/file picker).
-# python3/hostpython3 are pinned: this p4a release defaults its Android
-# target Python to 3.14.2, which was breaking an earlier build (a corrupted
-# hostpython3 "desktop" pip3). hostpython3's version must exactly match
-# python3's (p4a enforces this with a hard check), so both are pinned
-# together to 3.11.9 — a long-proven, widely-used target for Kivy/Android
-# builds.
+# python3/hostpython3 are pinned to 3.12.8 (must match each other exactly -
+# p4a hard-checks this). Originally pinned to 3.11.9 thinking Python 3.14
+# (this p4a release's default) was the cause of a corrupted hostpython3
+# "desktop" pip3 - it wasn't (see .github/workflows/build.yml for the real
+# cause, a checkout-path length issue, unrelated to Python version). 3.12
+# is required because numpy>=2.4 needs Python >=3.12 to build; kept below
+# 3.14 as the more battle-tested option for third-party recipes.
 # numpy IS pinned (to v2.5.2, note p4a's numpy recipe fetches by git tag so
 # this needs the "v" prefix): the recipe's own default, numpy 2.3.0, fails
 # to compile for Android — its unique.cpp is missing #include <unordered_map>,
 # a confirmed numpy bug (fixed upstream in numpy/numpy#29662, merged Sept
 # 2025). Any numpy release from after that fix works; 2.5.2 is current.
-requirements = python3==3.11.9,hostpython3==3.11.9,kivy==2.3.0,pillow,numpy==v2.5.2,tflite-runtime,plyer
+requirements = python3==3.12.8,hostpython3==3.12.8,kivy==2.3.0,pillow,numpy==v2.5.2,tflite-runtime,plyer
 
 orientation = portrait
 fullscreen = 0
@@ -48,9 +49,6 @@ android.allow_backup = True
 # default unpinned "master" branch, for reproducible builds — p4a has had
 # NO tagged release between 2024.01.21 and 2026.05.09, so an unpinned build
 # tracks whatever bleeding-edge master happens to be on the day it runs.
-# (This pin alone did NOT fix the Android build failure — that turned out
-# to be this release's default target Python being 3.14.2; see the
-# python3==3.11.9 pin above.)
 p4a.branch = master
 p4a.commit = v2026.05.09
 
