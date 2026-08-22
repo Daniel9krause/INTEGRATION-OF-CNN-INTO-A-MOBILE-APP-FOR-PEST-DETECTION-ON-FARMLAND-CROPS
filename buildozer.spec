@@ -15,7 +15,12 @@ version = 1.0
 # tflite-runtime is loaded via a recipe/wheel on Android; numpy & pillow are
 # needed for preprocessing; camera + android permissions handled by pyjnius;
 # plyer backs the Home screen's "Upload" button (native gallery/file picker).
-requirements = python3,kivy==2.3.0,pillow,numpy,tflite-runtime,plyer
+# numpy is PINNED: an unversioned "numpy" resolves to a modern release that
+# builds via meson, and python-for-android's bootstrap for that build path
+# is currently broken (fails with "Exec format error" building numpy's own
+# hostpython3 prerequisites). 1.23.2 predates that meson switch and uses
+# p4a's much older, battle-tested distutils-based numpy recipe instead.
+requirements = python3,kivy==2.3.0,pillow,numpy==1.23.2,tflite-runtime,plyer
 
 orientation = portrait
 fullscreen = 0

@@ -138,14 +138,24 @@ workflow to build in the cloud for free:
   `collected_data/_unclassified_new/` instead, ready for you to review
   and potentially fold into your next training round as a 14th class.
 
-## Notes on the `tflite-runtime` Android build
+## Notes on the Android build (issues already hit and fixed)
 
-`buildozer.spec` is already set to `android.archs = arm64-v8a` only (not
-`armeabi-v7a`) — the python-for-android recipe for `tflite-runtime` is
-known to fail on 32-bit `armeabi-v7a` builds ([reference](https://github.com/Android-for-Python/c4k_tflite_example)),
-and every phone from roughly the last 7 years is arm64 anyway, so this
-isn't a real limitation. If the GitHub Actions build still fails
-specifically on `tflite-runtime`, the fallback is switching the
-`requirements =` line in `buildozer.spec` from `tflite-runtime` to the
-full `tensorflow` package (bigger APK, but more reliably buildable) —
-one-line change, happy to make it once you see the exact build error.
+- `android.archs = arm64-v8a` only (not `armeabi-v7a`) — the
+  python-for-android recipe for `tflite-runtime` is known to fail on
+  32-bit `armeabi-v7a` builds ([reference](https://github.com/Android-for-Python/c4k_tflite_example)),
+  and every phone from roughly the last 7 years is arm64 anyway.
+- `numpy==1.23.2` is pinned in `requirements =`. An unversioned `numpy`
+  resolves to a modern release that builds via `meson`, and
+  python-for-android's bootstrap for that build path was broken as of
+  this project (failed with `OSError: [Errno 8] Exec format error`
+  trying to run a freshly-built `pip3` inside the build's hostpython3
+  sandbox — a known, documented p4a issue with unpinned `numpy`). 1.23.2
+  predates that switch and uses p4a's older, battle-tested distutils-based
+  numpy recipe instead.
+
+If the GitHub Actions build fails on something else entirely, paste the
+failed step's log (Actions tab → the failed run → the red "Build APK with
+Buildozer" step) and it can be diagnosed the same way these were: search
+backward from the "Command failed:" line for the actual Python traceback
+or compiler error, which is usually much further up than the final error
+dump.
