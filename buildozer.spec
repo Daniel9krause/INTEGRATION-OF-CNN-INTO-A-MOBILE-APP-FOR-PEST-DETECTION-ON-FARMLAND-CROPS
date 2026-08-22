@@ -37,7 +37,17 @@ version = 1.0
 # etc.) whose signatures changed in Python 3.13 - "too few arguments to
 # function call" / "call to undeclared function" at compile time. Kivy
 # 2.3.1 explicitly added Python 3.13 support; 2.3.0 predates it.
-requirements = python3==3.13.1,hostpython3==3.13.1,kivy==2.3.1,pillow,numpy==v2.5.2,tflite-runtime,plyer
+# charset-normalizer is listed explicitly (we don't use it directly - it's
+# a transitive dep of kivy's own "requests"/"filetype" requirements). p4a's
+# generic pip-install step for auto-discovered pure-Python extras omits
+# --platform/--python-version overrides, so pip correctly rejects the
+# android-tagged wheel it resolved for itself moments earlier ("not a
+# supported wheel on this platform") - every OTHER package in that chain
+# is a universal "none-any" wheel and installs fine regardless; this is
+# the one with a platform-specific wheel. Listing it as a top-level
+# requirement routes it through the same install path pillow/plyer
+# already succeed through.
+requirements = python3==3.13.1,hostpython3==3.13.1,kivy==2.3.1,pillow,numpy==v2.5.2,tflite-runtime,plyer,charset-normalizer
 
 orientation = portrait
 fullscreen = 0

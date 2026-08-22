@@ -173,6 +173,19 @@ workflow to build in the cloud for free:
   3.13, producing compile errors across most of Kivy's core (`_event.c`,
   `_window_sdl2.c`, `vertex_instructions.c`, ...). Kivy 2.3.1 explicitly
   added Python 3.13 support; `requirements-desktop.txt` bumped to match.
+- `charset-normalizer` listed explicitly in `requirements =` — we don't
+  use it directly, it's a transitive dependency of Kivy's own `requests`/
+  `filetype` requirements. p4a's generic pip-install step for
+  auto-discovered pure-Python extras (packages with no dedicated recipe)
+  omits the `--platform`/`--python-version` overrides it used moments
+  earlier to *resolve* them, so its own freshly-upgraded pip correctly
+  rejects the Android-tagged wheel it just picked (`ERROR: ...whl is not
+  a supported wheel on this platform`). Every other package in that
+  chain (`certifi`, `chardet`, `filetype`, `idna`, `six`, `urllib3`) is a
+  universal "none-any" wheel and installs fine regardless — this is the
+  one with a platform-specific wheel. Listing it as a top-level
+  requirement routes it through the same install path `pillow`/`plyer`
+  already succeed through.
 - **The actual root cause of `OSError: [Errno 8] Exec format error`
   running a freshly-built `pip3`** (hit on every attempt, regardless of
   numpy version, Python version, or p4a version — none of those were
