@@ -15,7 +15,7 @@ import os
 import json
 from kivy.uix.screenmanager import Screen
 from kivy.app import App
-from kivy.properties import StringProperty, NumericProperty
+from kivy.properties import StringProperty, NumericProperty, ListProperty
 from kivy.clock import Clock
 
 from utils.data_collector import DataCollector
@@ -26,6 +26,54 @@ ADVISORY_PATH = os.path.join(BASE_DIR, "data", "advisory_data.json")
 with open(ADVISORY_PATH, "r") as f:
     ADVISORY_DB = json.load(f)
 
+# A softmax classifier always has to pick SOMETHING from its known classes —
+# even a photo of a person, a wall, or a car gets forced into whichever of
+# the 13 classes activates most. A low top confidence is the only signal
+# we get that the image probably isn't one of our known classes at all, so
+# below this we refuse to present the raw guess as a real match. Tune this
+# based on real testing: too many legit photos coming back "Uncertain" ->
+# lower it; obviously wrong photos still confidently labeled -> raise it.
+CONFIDENCE_THRESHOLD = 0.60
+
+_CONFIDENT_COLOR = [0.2, 0.6, 0.2, 1]   # green
+_UNCERTAIN_COLOR = [0.85, 0.55, 0.1, 1]  # amber
+
+
+def build_result_info(label, confidence):
+    """Turns a raw (label, confidence) prediction into what the UI should
+    show — shared by a fresh classification (ResultScreen) and reopening a
+    saved one from History, so both stay consistent.
+    Returns (display_label, info_dict, confidence_color).
+    """
+    if confidence < CONFIDENCE_THRESHOLD:
+        display_label = f"Uncertain (closest guess: {label})"
+        info = {
+            "group": "Unknown",
+            "type": "Unclassified organism",
+            "description": (
+                "The model isn't confident this matches any of our 13 known "
+                "pest/disease classes — it may be an unrelated photo, poor "
+                "lighting/framing, or a genuinely new organism."
+            ),
+            "advisory": (
+                "Try recapturing with the leaf/pest filling more of the frame "
+                "in good lighting. If it still comes back uncertain, this may "
+                "be worth a local agricultural extension officer's review — "
+                "the image has been saved for that and for future retraining."
+            ),
+        }
+        return display_label, info, _UNCERTAIN_COLOR
+
+    info = ADVISORY_DB.get(label, {
+        # Safety net only — shouldn't trigger unless labels.txt and
+        # advisory_data.json ever drift out of sync with each other.
+        "group": "Unknown",
+        "type": "Unclassified organism",
+        "description": "This does not closely match any organism in our current 13-class database.",
+        "advisory": "Consider consulting a local agricultural extension officer. This image has been saved for expert review and future model retraining.",
+    })
+    return label, info, _CONFIDENT_COLOR
+
 
 class ResultScreen(Screen):
     image_path = StringProperty("")
@@ -35,6 +83,7 @@ class ResultScreen(Screen):
     description_text = StringProperty("")
     advisory_text = StringProperty("")
     confidence_value = NumericProperty(0)
+    confidence_color = ListProperty(_CONFIDENT_COLOR)
 
     def on_pre_enter(self, *args):
         self.data_collector = DataCollector()
@@ -54,16 +103,12 @@ class ResultScreen(Screen):
 
         label = result["label"]
         confidence = result["confidence"]
-        info = ADVISORY_DB.get(label, {
-            "group": "Unknown",
-            "type": "Unclassified organism",
-            "description": "This does not closely match any organism in our current 13-class database.",
-            "advisory": "Consider consulting a local agricultural extension officer. This image has been saved for expert review and future model retraining.",
-        })
+        display_label, info, color = build_result_info(label, confidence)
 
-        self.label_text = label
+        self.label_text = display_label
         self.confidence_text = f"{confidence * 100:.1f}% confidence"
         self.confidence_value = confidence * 100
+        self.confidence_color = color
         self.group_text = info["group"]
         self.description_text = info["description"]
         self.advisory_text = info["advisory"]
@@ -74,7 +119,10 @@ class ResultScreen(Screen):
             "group": info["group"],
         }
 
-        # Persist: 1) scan history record, 2) raw image into class-labeled dataset
+        # Persist: 1) scan history record, 2) raw image into class-labeled dataset.
+        # Note: predicted_label stores the model's raw top guess even when
+        # uncertain (useful for review/retraining) — group_name="Unknown" is
+        # what actually marks it as not a trusted match.
         app.db.add_scan(filepath, label, confidence, info["group"], flagged_new=(info["group"] == "Unknown"))
         self.data_collector.save(filepath, label, flagged_new=(info["group"] == "Unknown"))
 

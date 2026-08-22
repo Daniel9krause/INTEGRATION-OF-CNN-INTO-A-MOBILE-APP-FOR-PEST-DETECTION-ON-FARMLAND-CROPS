@@ -14,6 +14,8 @@ from kivy.uix.button import Button
 from kivy.app import App
 from kivy.metrics import dp
 
+from screens.result_screen import build_result_info
+
 
 class HistoryRow(BoxLayout):
     def __init__(self, scan_row, on_select, **kwargs):
@@ -60,21 +62,23 @@ class HistoryScreen(Screen):
     def _open_scan(self, scan_row):
         app = App.get_running_app()
         result_screen = app.root.get_screen("result")
-        # Re-render a saved result without re-running inference
-        result_screen.image_path = scan_row["image_path"]
-        result_screen.label_text = scan_row["predicted_label"]
-        result_screen.confidence_text = f"{scan_row['confidence']*100:.1f}% confidence"
-        result_screen.confidence_value = scan_row["confidence"] * 100
-        result_screen.group_text = scan_row["group_name"]
+        # Re-render a saved result without re-running inference. Reuses the
+        # same confidence-threshold logic ResultScreen uses on a fresh scan,
+        # so a low-confidence result still shows as "Uncertain" here too,
+        # not as a confident match just because it's stored under a real
+        # class name.
+        label = scan_row["predicted_label"]
+        confidence = scan_row["confidence"]
+        display_label, info, color = build_result_info(label, confidence)
 
-        import json, os
-        advisory_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                                      "data", "advisory_data.json")
-        with open(advisory_path) as f:
-            advisory_db = json.load(f)
-        info = advisory_db.get(scan_row["predicted_label"], {})
-        result_screen.description_text = info.get("description", "")
-        result_screen.advisory_text = info.get("advisory", "")
+        result_screen.image_path = scan_row["image_path"]
+        result_screen.label_text = display_label
+        result_screen.confidence_text = f"{confidence * 100:.1f}% confidence"
+        result_screen.confidence_value = confidence * 100
+        result_screen.confidence_color = color
+        result_screen.group_text = info["group"]
+        result_screen.description_text = info["description"]
+        result_screen.advisory_text = info["advisory"]
 
         app.root.current = "result"
 
