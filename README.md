@@ -145,17 +145,24 @@ workflow to build in the cloud for free:
   32-bit `armeabi-v7a` builds ([reference](https://github.com/Android-for-Python/c4k_tflite_example)),
   and every phone from roughly the last 7 years is arm64 anyway.
 - `p4a.branch = master` + `p4a.commit = v2026.05.09` pin
-  python-for-android to its last tagged stable release. Left unpinned,
-  buildozer tracks p4a's bleeding-edge `master` branch — which had a
-  regression breaking numpy's build (`OSError: [Errno 8] Exec format
-  error` running a freshly-built `pip3` inside the build's hostpython3
-  bootstrap). Note: an earlier attempt at fixing this pinned
-  `numpy==1.23.2` instead, on the theory that older numpy avoids a
-  `meson`-based build path — that was wrong and got reverted: p4a's numpy
-  recipe is a `MesonRecipe` unconditionally (hardcoded `version =
-  "v2.3.0"` inside the recipe itself), so every numpy version goes
-  through the same meson path regardless, and pre-meson numpy versions
-  don't even have the `meson.build` file that requires.
+  python-for-android to its last tagged stable release, for reproducible
+  builds (p4a has had no tagged release between 2024.01.21 and
+  2026.05.09, so an unpinned build tracks whatever bleeding-edge master
+  happens to exist that day).
+- `python3==3.11.9,hostpython3==3.11.9` — this is the fix that actually
+  mattered. Every build hit the same failure regardless of the p4a pin
+  above: `OSError: [Errno 8] Exec format error` running a freshly-built
+  `pip3` inside the build's `hostpython3` "desktop" bootstrap. Root cause:
+  this p4a release's `python3` recipe defaults the Android target Python
+  to **3.14.2** — very new, and its `ensurepip` patch doesn't produce a
+  working `pip3` against it. `hostpython3` must be pinned to the exact
+  same version as `python3` (p4a hard-checks this at build time), so both
+  are pinned to 3.11.9 — a long-proven, widely-used target for Kivy/
+  Android builds. (An earlier attempt pinned `numpy==1.23.2` instead, on
+  the theory that older numpy avoids a `meson`-based build path — that
+  was a wrong diagnosis and got reverted: p4a's numpy recipe is a
+  `MesonRecipe` unconditionally regardless of numpy version, and the
+  actual failure was one level lower, in the Python build itself.)
 
 If the GitHub Actions build fails on something else entirely, paste the
 failed step's log (Actions tab → the failed run → the red "Build APK with
