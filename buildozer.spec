@@ -43,7 +43,12 @@ android.permissions = CAMERA,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,INTERN
 
 android.api = 33
 android.minapi = 24
-android.ndk = 25b
+# 27d is the current Android NDK LTS release. Bumped from 25b after numpy's
+# FP16 SIMD code hit a genuine LLVM/clang AArch64 backend crash compiling
+# for arm64 ("Cannot select: ... AArch64ISD::STRICT_FCMP") - a known,
+# iteratively-fixed limitation in older clang's strict-FP/half-precision
+# codegen. NDK 25b bundles clang-14; 27d bundles a much newer clang.
+android.ndk = 27d
 # arm64-v8a only: the tflite-runtime p4a recipe is known to fail building
 # for armeabi-v7a (32-bit) — see https://github.com/Android-for-Python/c4k_tflite_example.
 # Every phone from the last ~7 years is arm64, so this isn't a real limitation.

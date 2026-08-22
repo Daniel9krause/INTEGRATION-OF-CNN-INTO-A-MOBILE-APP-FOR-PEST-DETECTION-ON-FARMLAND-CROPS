@@ -159,6 +159,14 @@ workflow to build in the cloud for free:
   was fixed as part of CPython's own official Android platform support
   work ([PEP 738](https://peps.python.org/pep-0738/)), which targeted
   3.13 — so 3.13+ has the real `configure`-level fix.
+- `android.ndk = 27d` — bumped from `25b` after `numpy`'s FP16 SIMD code
+  hit a genuine LLVM/clang AArch64 backend crash compiling for arm64
+  (`fatal error: error in backend: Cannot select: ...
+  AArch64ISD::STRICT_FCMP`, a known, iteratively-fixed limitation in
+  older clang's strict-FP/half-precision codegen — confirmed via several
+  matching `android/ndk` and `llvm-project` issue reports). NDK 25b
+  bundles clang-14; 27d (the current NDK LTS release) bundles a much
+  newer clang.
 - **The actual root cause of `OSError: [Errno 8] Exec format error`
   running a freshly-built `pip3`** (hit on every attempt, regardless of
   numpy version, Python version, or p4a version — none of those were
