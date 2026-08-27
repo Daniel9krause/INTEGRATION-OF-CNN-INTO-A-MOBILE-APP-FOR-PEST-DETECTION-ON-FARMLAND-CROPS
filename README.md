@@ -199,6 +199,33 @@ workflow to build in the cloud for free:
   packages, as seen throughout this project) removes `charset-normalizer`
   from the dependency graph entirely, rather than continuing to chase
   which version of it might satisfy every constraint at once.
+- `local_recipes/kivy/` — giving `requests` its own recipe (above) fixed
+  the `charset-normalizer` wheel error, but immediately hit a new one:
+  `AssertionError` at p4a's `toolchain.py`
+  (`assert set(build_order).intersection(set(python_modules)) == set()`).
+  Root cause, traced into p4a's actual source
+  (`pythonforandroid/graph.py`'s `get_recipe_order_and_bootstrap` and
+  `pythonforandroid/recipes/kivy/__init__.py`): p4a's built-in Kivy
+  recipe hardcodes
+  `python_depends = ['certifi', 'chardet', 'idna', 'requests', 'urllib3', 'filetype']`
+  — a flat list of pip-installed names, unconditionally merged into the
+  build's `python_modules` set whenever the Kivy recipe resolves, with no
+  check for whether any of those names *also* has its own dedicated
+  recipe elsewhere in the same build. Once `requests` had a dedicated
+  recipe (previous entry above), it existed simultaneously in
+  `build_order` (via its own recipe) and `python_modules` (via Kivy's
+  hardcoded list) — tripping the assertion. There's no per-package way to
+  tell p4a "this python_depends entry is actually satisfied by a
+  recipe"; the only lever is to change what Kivy's recipe declares, and
+  since p4a's local-recipes directory is checked *before* its own
+  built-in `pythonforandroid/recipes/` (confirmed in `recipe.py`'s
+  `Recipe.get_recipe`/`recipe_dirs`), a same-named recipe in
+  `local_recipes/` fully shadows the built-in one. `local_recipes/kivy/`
+  is an unmodified copy of upstream's `kivy==2.3.1` recipe (`__init__.py`
+  + its 3 `.patch` files, pulled directly from the `p4a.commit` tag
+  pinned above) with exactly one change: `requests` removed from
+  `python_depends`, since our own `local_recipes/requests/` recipe now
+  provides it instead.
 - **The actual root cause of `OSError: [Errno 8] Exec format error`
   running a freshly-built `pip3`** (hit on every attempt, regardless of
   numpy version, Python version, or p4a version — none of those were
