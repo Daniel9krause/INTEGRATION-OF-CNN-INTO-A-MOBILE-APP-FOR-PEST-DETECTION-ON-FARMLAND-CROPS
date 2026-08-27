@@ -9,7 +9,7 @@ viral disease, bacterial disease) and gives practical advisory steps.
 
 | Requirement | Where it lives |
 |---|---|
-| Capture real-world images (camera) or upload an existing photo | `screens/home_screen.py` — live `Camera` widget + native "Upload" file picker (`plyer`) |
+| Capture real-world images (camera) or upload an existing photo | `screens/home_screen.py` — live `Camera` widget + native "Upload" file picker (`plyer` on desktop, a direct Android Storage-Access-Framework picker on-device — see "Real-device issues found and fixed" below for why) |
 | Classify pest + organism group | `model/classifier.py` (MobileNetV2 TFLite) + `data/advisory_data.json` |
 | View Classification Result | `screens/result_screen.py` |
 | View Advisory Information | Built into Result screen + standalone `screens/advisory_screen.py` |
@@ -200,6 +200,44 @@ workflow to build in the cloud for free:
   **"flag as new/unknown organism"** on a result, that image goes into
   `collected_data/_unclassified_new/` instead, ready for you to review
   and potentially fold into your next training round as a 14th class.
+
+## Real-device issues found and fixed
+
+The build succeeding and running the app on an actual phone are two
+different milestones — these three only showed up during real on-device
+testing:
+
+- **Upload always said "No image selected"**, even when a real photo was
+  picked. Android's gallery/Photos picker hands back a `content://` URI,
+  not a filesystem path, and `choose_from_gallery()`'s
+  `os.path.exists(filepath)` check can never be true for one. `plyer`'s
+  built-in Android filechooser tries to resolve such URIs to a real path
+  itself, but only for a handful of known content-provider authorities,
+  and via a `_data` database column that Android 10+'s Scoped Storage
+  leaves null for most providers — including the modern system Photo
+  Picker most phones now show by default. So it silently returned
+  `None`. Fixed by bypassing `plyer` on Android entirely: `home_screen.py`
+  now launches the picker `Intent` directly and reads the result via
+  `ContentResolver.openFileDescriptor(...).detachFd()` into a plain OS
+  file descriptor, which `os.fdopen()` reads natively — this works
+  regardless of Android version or which picker app the OS shows, since
+  it never depends on that unreliable path-resolution step at all.
+- **Camera preview (and every captured photo) was upside-down.** A
+  long-documented Kivy quirk on Android: the camera sensor's native
+  (landscape) orientation doesn't get corrected before landing in the
+  preview texture on many devices. Fixed by rotating the `Camera`
+  widget's own canvas 180° (`PushMatrix`/`Rotate`/`PopMatrix` in
+  `_fix_camera_orientation()`) — this corrects both the live preview and
+  `export_to_png()` captures together, since both render through the
+  same widget canvas.
+- **Every real capture came back "Uncertain (closest guess: Beetle)"** —
+  this was very likely just a symptom of the orientation bug above, not
+  a separate issue: `train/train_model.py`'s augmentation only ever
+  flips images horizontally, never vertically/180°, so the model never
+  saw upside-down training images and had no way to recognize a
+  systematically inverted real capture. Should resolve on its own once
+  the camera-orientation fix is on the phone; flag it again if it
+  doesn't.
 
 ## Notes on the Android build (issues already hit and fixed)
 
