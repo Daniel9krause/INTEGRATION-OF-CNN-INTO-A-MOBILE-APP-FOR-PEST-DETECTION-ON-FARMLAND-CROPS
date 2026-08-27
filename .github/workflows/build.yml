@@ -37,10 +37,25 @@ jobs:
         with:
           python-version: '3.11'
 
+      # ubuntu-22.04 runners ship several JDKs side by side (11, 17, 21, ...)
+      # with JDK 11 as the ambient default. Installing `openjdk-17-jdk` via
+      # apt does NOT change that default - `javac`/JAVA_HOME still resolved
+      # to JDK 11 everywhere, including for the final Gradle step, which
+      # failed instantly with "Android Gradle plugin requires Java 17 to
+      # run. You are currently using Java 11." setup-java explicitly
+      # exports JAVA_HOME and prepends JDK 17's bin/ to PATH for every
+      # later step in this job (including buildozer's own subprocesses),
+      # which apt installation alone doesn't do.
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip \
+          sudo apt-get install -y git zip unzip python3-pip \
             autoconf libtool pkg-config zlib1g-dev libncurses5-dev \
             libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev
 

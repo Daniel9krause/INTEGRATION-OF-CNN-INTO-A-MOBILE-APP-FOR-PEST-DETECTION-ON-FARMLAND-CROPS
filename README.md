@@ -226,6 +226,24 @@ workflow to build in the cloud for free:
   pinned above) with exactly one change: `requests` removed from
   `python_depends`, since our own `local_recipes/requests/` recipe now
   provides it instead.
+- `Set up JDK 17` step in `.github/workflows/build.yml` (using
+  `actions/setup-java@v4`) — with the two entries above fixed, the build
+  got all the way to its final stage (`gradlew clean assembleDebug`) and
+  failed instantly there with `Android Gradle plugin requires Java 17 to
+  run. You are currently using Java 11.` `ubuntu-22.04` runners ship
+  several JDKs side by side (11, 17, 21, ...) with **JDK 11 as the
+  ambient default** — `sudo apt-get install openjdk-17-jdk` installs a
+  second JDK alongside it but doesn't change which one `javac`/
+  `JAVA_HOME` resolve to by default, confirmed directly in the log
+  (p4a's own "Search for Java compiler" step found
+  `/usr/lib/jvm/temurin-11-jdk-amd64/bin/javac`, and that JDK 11 stayed
+  the active one through every later step, including the final Gradle
+  invocation). Replaced the apt install with an explicit
+  `actions/setup-java@v4` step (`distribution: temurin, java-version:
+  '17'`), which exports `JAVA_HOME` and prepends JDK 17's `bin/` to
+  `PATH` for every subsequent step in the job — including buildozer's
+  own subprocesses — which installing a second JDK via apt alone
+  doesn't do.
 - **The actual root cause of `OSError: [Errno 8] Exec format error`
   running a freshly-built `pip3`** (hit on every attempt, regardless of
   numpy version, Python version, or p4a version — none of those were
