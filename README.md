@@ -173,29 +173,32 @@ workflow to build in the cloud for free:
   3.13, producing compile errors across most of Kivy's core (`_event.c`,
   `_window_sdl2.c`, `vertex_instructions.c`, ...). Kivy 2.3.1 explicitly
   added Python 3.13 support; `requirements-desktop.txt` bumped to match.
-- `local_recipes/charset-normalizer/` — a hand-written p4a recipe pinned
-  to 3.3.2. We don't use `charset-normalizer` directly; it's a transitive
-  dependency of Kivy's own `requests`/`filetype` requirements, and has no
-  built-in p4a recipe. p4a's generic fallback for such "extra pure
-  Python" packages (`pythonforandroid/build.py`'s `run_pymodules_install`)
-  has two confirmed bugs: it silently drops user version pins for
-  anything without a dedicated recipe (tried `charset-normalizer==3.3.2`
-  directly in `requirements =` first — confirmed via the actual `pip3
-  install ...` command in the build log that the pin never made it
-  through, resolving to 3.5.1 regardless), and its final `pip install
-  --target ...` call omits the `--platform`/`--python-version` overrides
-  it used moments earlier to *resolve* packages, so it correctly rejects
-  the Android-tagged wheel it just picked for itself (`ERROR: ...whl is
-  not a supported wheel on this platform`). Every other package in that
-  chain (`certifi`, `chardet`, `filetype`, `idna`, `six`, `urllib3`) is a
-  universal "none-any" wheel and installs fine regardless of the missing
-  flags; `charset-normalizer` 3.4.0+ is the one that ships an optional
-  mypyc-compiled platform-specific wheel (including an Android one).
-  Rather than fight the fallback path, giving it a real recipe (with
-  `p4a.local_recipes = local_recipes` pointing at it) installs it through
-  the same recipe-based path numpy/kivy/python3 already succeed through,
-  where version pins are actually respected — pinned to 3.3.2, the last
-  release with only a universal `py3-none-any` wheel.
+- `local_recipes/requests/` — a hand-written p4a recipe pinned to
+  `2.25.1`. We don't use `requests` directly; it's a transitive
+  dependency of Kivy's own requirements (Kivy places no version
+  constraint on it), and has no built-in p4a recipe. An unpinned
+  `requests` resolves to a recent release depending on
+  `charset-normalizer>=~3.4`, which ships an optional mypyc-compiled
+  wheel per platform (including Android). p4a's generic fallback for such
+  "extra pure Python" packages (`pythonforandroid/build.py`'s
+  `run_pymodules_install`) has two confirmed bugs that combine badly with
+  that: it silently drops user version pins for anything without a
+  dedicated recipe (confirmed two ways — pinning `charset-normalizer`
+  directly did nothing, and even giving *it* a local recipe didn't help,
+  since this generic resolver independently re-satisfies whatever floor
+  `requests` declares regardless of what's already installed), and its
+  final `pip install --target ...` call omits the `--platform`/
+  `--python-version` overrides it used moments earlier to *resolve*
+  packages, so it correctly rejects the Android-tagged wheel it just
+  picked for itself (`ERROR: ...whl is not a supported wheel on this
+  platform`). `requests==2.25.1` (Dec 2020, confirmed via PyPI metadata)
+  predates requests' switch to `charset-normalizer` entirely — it depends
+  only on `chardet`/`idna`/`urllib3`/`certifi`, all universal "none-any"
+  wheels with no platform-specific-wheel problem. Giving `requests`
+  itself a real recipe (version pins ARE respected for recipe-based
+  packages, as seen throughout this project) removes `charset-normalizer`
+  from the dependency graph entirely, rather than continuing to chase
+  which version of it might satisfy every constraint at once.
 - **The actual root cause of `OSError: [Errno 8] Exec format error`
   running a freshly-built `pip3`** (hit on every attempt, regardless of
   numpy version, Python version, or p4a version — none of those were
