@@ -81,9 +81,24 @@ class PestClassifier:
         self.interpreter.invoke()
         output = self.interpreter.get_tensor(self.output_details[0]["index"])[0]
 
-        # Softmax-safe normalization if the model doesn't already output probabilities
-        exp = np.exp(output - np.max(output))
-        probs = exp / exp.sum()
+        # train/train_model.py's exported model already ends in a
+        # Dense(..., activation="softmax") layer, so `output` is normally
+        # already a valid probability distribution (non-negative, sums to
+        # ~1). Re-applying softmax on top of that (as this used to do
+        # unconditionally) over-smooths already-confident probabilities
+        # toward a near-uniform distribution - e.g. a genuine [0.97, 0.01,
+        # ...] prediction collapses to roughly [0.19, 0.07, ...], which
+        # silently pushed every real prediction below result_screen.py's
+        # CONFIDENCE_THRESHOLD and labeled it "Uncertain" regardless of
+        # how sure the model actually was. Only fall back to softmax for
+        # outputs that don't already look like probabilities (e.g. a
+        # differently-exported model whose last layer is raw logits).
+        if np.all(output >= -1e-6) and abs(float(output.sum()) - 1.0) < 1e-3:
+            probs = np.clip(output, 0, None)
+            probs = probs / probs.sum()
+        else:
+            exp = np.exp(output - np.max(output))
+            probs = exp / exp.sum()
 
         top_indices = probs.argsort()[-3:][::-1]
         top3 = [(self.labels[i], float(probs[i])) for i in top_indices]

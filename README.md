@@ -62,16 +62,22 @@ This opens a phone-sized window (400x720) on your desktop. Your webcam
 substitutes for the phone camera. Everything — capture, classification
 (mock mode if no model yet), history, advisory — works exactly the same.
 
-## 2. Add your trained model
+## 2. The trained model
 
-Until a real model is in place, `model/classifier.py` runs in **mock
-inference mode**: every capture/upload gets a random label from
-`model/labels.txt`, just so the rest of the app (UI, database, advisory
-flow) is testable end-to-end before training is done. This is why results
-look unrelated to the actual photo — it's not a bug, it just isn't looking
-at the image yet.
+`model/pest_model.tflite` is trained and committed — the app classifies
+real photos out of the box, no setup needed for this step. Current
+validation accuracy: **80.9%** across all 13 classes, trained on 1,175
+real, deduplicated photos (see "Dataset provenance" below for exactly
+where they came from and known weak spots).
 
-To make classification real:
+If no `.tflite` file were present, `model/classifier.py` would fall back
+to a **mock inference mode** (a random label from `model/labels.txt`) so
+the rest of the app stays testable even before a model exists — that's
+not the current state, but it's worth knowing if you ever delete or
+retrain over the model file.
+
+To retrain (e.g. after adding more images, especially for the classes
+flagged as thin below):
 
 1. Install training deps (same file used for desktop testing —
    `tensorflow-cpu` is already in there, nothing extra to install):
@@ -101,6 +107,63 @@ To make classification real:
 was trained on (index 0 = first line, etc) — `train/train_model.py`
 enforces this automatically, so as long as you don't hand-edit
 `labels.txt` after training, it stays correct.
+
+### Dataset provenance and known weak spots
+
+Per-class image counts actually used for the current model:
+
+| Class | Images | Source |
+|---|---|---|
+| Beetle, Grasshopper, Healthy Leaf, Leaf Blight, Leaf Spot, Mosaic Virus, Moth, Weevil, Whitefly | 85–108 each | Kaggle datasets linked in [`data/dataset/README.md`](data/dataset/README.md) |
+| Aphids | 57 | 21 from the same Kaggle sources + 36 real photos pulled from Wikimedia Commons |
+| Armyworm | 67 | 30 + 37 from Commons |
+| Bollworm | 74 | 31 + 43 from Commons |
+| Stem Borer | 40 | 33 + 7 from Commons — still the thinnest class; Commons' `Chilo partellus`/`Busseola fusca`/`Sesamia` categories turned out sparse |
+
+Two data-quality issues were found and fixed before training on this
+data:
+- **Duplicate-file padding**: those same four classes originally claimed
+  100–120 images each, but 75–90% of each was the *same* underlying
+  photo, re-saved under Windows' "- Copy (2)", "- Copy (3)" auto-rename.
+  Left in place, `image_dataset_from_directory`'s random train/validation
+  split would have scattered duplicates of one photo across both splits,
+  letting the model "validate" against images it had already memorized
+  byte-for-byte — an inflated, meaningless accuracy number. Deduplicated
+  by content hash before training; real, replacement images were then
+  pulled from Wikimedia Commons (via its category API, no login needed)
+  to partially make up the shortfall.
+- **Non-photo contamination**: Commons categories mix real photographs
+  with historical illustrations, scientific diagrams, and even unrelated
+  images that inherit a species category incorrectly (two protein
+  crystal-structure renders showed up under `Helicoverpa armigera` and
+  `Spodoptera frugiperda` simply because those proteins were first
+  isolated from those insects). Filtering by filename keywords alone
+  missed a 1928 watercolor of an adult moth; the reliable signal turned
+  out to be each file's *own* Commons categories (`Category:Paintings in
+  Te Papa`, `Category:Illustrations by ...`, `Category:Insect life cycle
+  diagrams`, etc.) — 12 of the 135 downloaded candidates were caught and
+  removed this way.
+
+If you want to improve accuracy further, **Stem Borer** is the class
+most worth growing first (40 images, well under the 150+ recommendation)
+— see [`data/dataset/README.md`](data/dataset/README.md) for sources,
+then rerun `python train/train_model.py`.
+
+### A bug this training run surfaced and fixed
+
+`model/classifier.py` was applying softmax to the model's output
+unconditionally — but `train/train_model.py`'s exported model already
+ends in a `Dense(..., activation="softmax")` layer, so its raw output
+*is already* a probability distribution. Softmaxing an already-softmaxed
+output over-smooths it toward uniform: a genuine `[0.97, 0.01, ...]`
+prediction was coming out as roughly `[0.19, 0.07, ...]`. The classifier
+still picked the right label (softmax doesn't change the argmax), but
+every displayed confidence number was badly deflated — silently pushing
+every single real prediction below `screens/result_screen.py`'s 60%
+"confident" threshold, so the app would have shown "Uncertain" on every
+correct classification. Fixed in `model/classifier.py` to only apply
+softmax when the raw output doesn't already look like a probability
+distribution.
 
 ## 3. Build the Android APK (no Mac/Linux machine needed)
 

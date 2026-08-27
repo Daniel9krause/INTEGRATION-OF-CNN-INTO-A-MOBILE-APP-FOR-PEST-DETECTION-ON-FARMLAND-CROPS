@@ -39,7 +39,15 @@ resolution — the script resizes everything to 224×224 automatically.
 
 ## Current status
 
-All 13 classes are populated (85–120 images each) — ready to train.
+All 13 classes are populated and a model has been trained on them
+(80.9% validation accuracy — see the main [README](../../README.md)'s
+"Dataset provenance and known weak spots" section for exact per-class
+counts, sources, and the deduplication/quality-filtering that was done
+first). Most classes have 85–108 real images; four (Aphids, Armyworm,
+Bollworm, Stem Borer) are thinner (40–74) after removing duplicate-file
+padding. **Stem Borer (40 images) is the best candidate to grow next**
+if you want to improve accuracy — add real images below, then rerun
+`python train/train_model.py`.
 
 ## Where to get more images (if you want to grow a class later)
 
