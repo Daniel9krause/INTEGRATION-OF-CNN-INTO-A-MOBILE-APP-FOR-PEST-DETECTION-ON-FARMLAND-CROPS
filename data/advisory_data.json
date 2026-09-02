@@ -76,5 +76,11 @@
     "type": "Snout beetle (Order: Coleoptera, family Curculionidae)",
     "description": "Adults chew small round holes in leaves, stems, or pods, while larvae often bore into stems, roots, or stored grain, causing damage that's easy to miss until it's severe.",
     "advisory": "Practice good field sanitation and crop rotation to break the life cycle. Store harvested grain in sealed, dry containers to prevent weevil infestation post-harvest. Apply an approved insecticide at first sign of adult activity."
+  },
+  "Not Plant": {
+    "group": "Not a Plant",
+    "type": "No crop, leaf or pest in view",
+    "description": "This photo does not show a plant, leaf or crop pest, so nothing was diagnosed. The app checks that a plant is actually in frame before it will name a pest or disease - that is why no result is given here instead of a guess.",
+    "advisory": "Point the camera at the leaf, stem or insect you want checked, about 15-30 cm away, and let it fill most of the frame. Take the photo in daylight or good light, hold the phone steady, and avoid deep shade or direct glare on the leaf surface."
   }
 }

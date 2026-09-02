@@ -43,9 +43,14 @@ class AdvisoryScreen(Screen):
         container = self.ids.get("advisory_list")
         if not container or container.children:
             return  # only build once; content is static
-        with open(ADVISORY_PATH) as f:
+        with open(ADVISORY_PATH, encoding="utf-8") as f:
             advisory_db = json.load(f)
         for label, info in advisory_db.items():
+            # "Not Plant" is a model class, not an organism. Its entry
+            # exists so the Result screen can explain a refusal; listing it
+            # in a browsable pest reference would just be confusing.
+            if label == "Not Plant":
+                continue
             container.add_widget(AdvisoryCard(label, info))
 
     def go_home(self):

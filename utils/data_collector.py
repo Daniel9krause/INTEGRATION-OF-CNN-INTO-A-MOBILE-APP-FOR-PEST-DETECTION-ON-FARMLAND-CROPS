@@ -60,6 +60,28 @@ class DataCollector:
         shutil.copy2(image_path, target_path)
         return target_path
 
+    def save_result(self, image_path, status, label):
+        """File an image according to the classifier's verdict.
+
+        Refused scans are kept - photos of walls, hands and dim rooms are
+        precisely the training data the "Not Plant" class needs to keep
+        improving, and a genuinely uncertain leaf is worth an expert's
+        look. What matters is that they are NEVER filed under a pest name:
+        collected_data/ feeds future retraining runs, so filing a photo of
+        a person under "Healthy Leaf" would teach the next model the exact
+        mistake this release fixes.
+
+        Unusable frames (too dark, blurred, blank) are not stored at all -
+        they carry no information about any organism and would fill a
+        farmer's phone with black rectangles.
+        """
+        from utils.result_presentation import collection_folder
+
+        if status == "unusable":
+            return None
+        folder = collection_folder(status, label)
+        return self.save(image_path, folder, flagged_new=False)
+
     def dataset_summary(self):
         """Returns {class_name: image_count} for everything collected so far —
         useful for showing the app is actively growing its own dataset."""

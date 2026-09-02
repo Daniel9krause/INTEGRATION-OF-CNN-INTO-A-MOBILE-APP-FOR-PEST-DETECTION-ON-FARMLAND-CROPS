@@ -5,12 +5,17 @@ real time. Point your phone camera at a leaf or pest, capture, and the app
 classifies it into one of 13 organism groups (insect pests, fungal disease,
 viral disease, bacterial disease) and gives practical advisory steps.
 
+If the photo is not a plant, or is too dark or blurred to read, the app says
+so and declines to diagnose rather than guessing — see
+[Knowing when not to answer](#knowing-when-not-to-answer).
+
 ## Features (mapped to your requirements)
 
 | Requirement | Where it lives |
 |---|---|
 | Capture real-world images (camera) or upload an existing photo | `screens/home_screen.py` — live `Camera` widget + native "Upload" file picker (`plyer` on desktop, a direct Android Storage-Access-Framework picker on-device — see "Real-device issues found and fixed" below for why) |
 | Classify pest + organism group | `model/classifier.py` (MobileNetV2 TFLite) + `data/advisory_data.json` |
+| Refuse to guess on non-plants / unusable photos | `utils/image_quality.py` + the `Not Plant` class + `model/ood_stats.json` — see [Knowing when not to answer](#knowing-when-not-to-answer) |
 | View Classification Result | `screens/result_screen.py` |
 | View Advisory Information | Built into Result screen + standalone `screens/advisory_screen.py` |
 | View Scan History | `screens/history_screen.py` + `utils/database.py` (SQLite) |
@@ -24,21 +29,32 @@ farmland_detect/
 ├── buildozer.spec             # Android build configuration
 ├── requirements-desktop.txt   # For testing on your PC
 ├── screens/
-│   ├── home_screen.py         # Camera capture
-│   ├── result_screen.py       # Classification + advisory
+│   ├── home_screen.py         # Camera capture + orientation control
+│   ├── result_screen.py       # Classification, advisory, or an explicit refusal
 │   ├── history_screen.py      # Past scans (SQLite)
-│   └── advisory_screen.py     # Full 13-class reference library
+│   └── advisory_screen.py     # Full pest reference library
 ├── model/
-│   ├── classifier.py          # TFLite inference wrapper
-│   ├── labels.txt             # 13 class names
-│   └── pest_model.tflite      # <-- python train/train_model.py generates this (see below)
-├── train/
-│   └── train_model.py         # MobileNetV2 transfer-learning + TFLite export
+│   ├── classifier.py          # TFLite inference + the three refusal layers
+│   ├── labels.txt             # 13 pest/disease classes + "Not Plant"
+│   ├── pest_model.tflite      # <-- train/train_model.py generates this
+│   └── ood_stats.json         # <-- and this: open-set reference statistics
+├── train/                     # Desktop/Colab only; excluded from the APK
+│   ├── train_model.py         # Transfer learning + TFLite export + OOD stats
+│   ├── fetch_negatives.py     # Builds the "Not Plant" class from Commons
+│   ├── evaluate_rejection.py  # Does it refuse what it should? (pass/fail)
+│   └── calibrate_thresholds.py# Grounds the quality gate in real data
+├── tests/
+│   ├── test_camera_transform.py  # Orientation maths, no device needed
+│   └── test_decision_logic.py    # Refusal rules, network stubbed out
 ├── data/
 │   ├── advisory_data.json     # Advisory knowledge base per class
 │   └── dataset/                # <-- YOU ADD training images here, one folder per class
 │       └── README.md          # Exact folder layout + dataset sources per class
 ├── utils/
+│   ├── image_quality.py       # Too dark / blurred / blank gate
+│   ├── camera_transform.py    # Upright preview AND matching capture
+│   ├── result_presentation.py # One place that decides what the UI shows
+│   ├── app_settings.py        # Persisted preferences (camera rotation)
 │   ├── database.py            # SQLite scan history
 │   └── data_collector.py      # Grows a labeled dataset from real captures
 ├── assets/                    # .kv layout files + icon
@@ -144,6 +160,15 @@ data:
   diagrams`, etc.) — 12 of the 135 downloaded candidates were caught and
   removed this way.
 
+A 14th class, **Not Plant**, is assembled automatically rather than by
+hand — `python train/fetch_negatives.py` pulls people, hands, furniture,
+walls, floors, animals, food, roads, screens and tools from curated
+Wikimedia Commons categories, rejects anything strongly green-dominant (a
+bicycle photographed against a hedge would otherwise teach the model that
+foliage means "not a plant"), and synthesises dim/soft-focus variants,
+because a legible-but-dark indoor photo is precisely the case that used to
+come back as "Healthy Leaf".
+
 If you want to improve accuracy further, **Stem Borer** is the class
 most worth growing first (40 images, well under the 150+ recommendation)
 — see [`data/dataset/README.md`](data/dataset/README.md) for sources,
@@ -204,40 +229,178 @@ workflow to build in the cloud for free:
 ## Real-device issues found and fixed
 
 The build succeeding and running the app on an actual phone are two
-different milestones — these three only showed up during real on-device
-testing:
+different milestones. These only showed up during real on-device testing.
 
-- **Upload always said "No image selected"**, even when a real photo was
-  picked. Android's gallery/Photos picker hands back a `content://` URI,
-  not a filesystem path, and `choose_from_gallery()`'s
-  `os.path.exists(filepath)` check can never be true for one. `plyer`'s
-  built-in Android filechooser tries to resolve such URIs to a real path
-  itself, but only for a handful of known content-provider authorities,
-  and via a `_data` database column that Android 10+'s Scoped Storage
-  leaves null for most providers — including the modern system Photo
-  Picker most phones now show by default. So it silently returned
-  `None`. Fixed by bypassing `plyer` on Android entirely: `home_screen.py`
-  now launches the picker `Intent` directly and reads the result via
-  `ContentResolver.openFileDescriptor(...).detachFd()` into a plain OS
-  file descriptor, which `os.fdopen()` reads natively — this works
-  regardless of Android version or which picker app the OS shows, since
-  it never depends on that unreliable path-resolution step at all.
-- **Camera preview (and every captured photo) was upside-down.** A
-  long-documented Kivy quirk on Android: the camera sensor's native
-  (landscape) orientation doesn't get corrected before landing in the
-  preview texture on many devices. Fixed by rotating the `Camera`
-  widget's own canvas 180° (`PushMatrix`/`Rotate`/`PopMatrix` in
-  `_fix_camera_orientation()`) — this corrects both the live preview and
-  `export_to_png()` captures together, since both render through the
-  same widget canvas.
-- **Every real capture came back "Uncertain (closest guess: Beetle)"** —
-  this was very likely just a symptom of the orientation bug above, not
-  a separate issue: `train/train_model.py`'s augmentation only ever
-  flips images horizontally, never vertically/180°, so the model never
-  saw upside-down training images and had no way to recognize a
-  systematically inverted real capture. Should resolve on its own once
-  the camera-orientation fix is on the phone; flag it again if it
-  doesn't.
+### Upload always said "No image selected"
+
+Android's gallery/Photos picker hands back a `content://` URI, not a
+filesystem path, so `choose_from_gallery()`'s `os.path.exists(filepath)`
+check could never be true. `plyer`'s Android filechooser tries to resolve
+such URIs itself, but only for a few known content-provider authorities and
+via a `_data` column that Android 10+'s Scoped Storage leaves null for most
+providers — including the system Photo Picker most phones now show by
+default. Fixed by bypassing `plyer` on Android: `home_screen.py` launches
+the picker `Intent` directly and reads the result through
+`ContentResolver.openFileDescriptor(...).detachFd()` into a plain OS file
+descriptor, which `os.fdopen()` reads natively.
+
+### The camera preview was rotated, not upside-down
+
+Kivy's Android camera provider does **no** orientation handling at all —
+in Kivy's own `camera_android.py` the call that would fix it is commented
+out (`# self._android_camera.setDisplayOrientation()`). Two separate faults
+result:
+
+1. **Rotation.** Phone sensors are mounted landscape and report
+   `CameraInfo.orientation = 90` on almost every back camera. Kivy passes
+   the raw sensor frame straight through, so a portrait app shows a
+   sideways preview — which is why the phone had to be physically turned to
+   frame a leaf.
+2. **Vertical flip.** Kivy draws the camera's OES texture into an Fbo with
+   default texture coordinates. GL's texture origin is bottom-left,
+   Android's camera frames are top-left, and Kivy never applies the
+   `SurfaceTexture` transform matrix that reconciles them.
+
+An earlier fix here rotated the widget a hardcoded 180°, which addresses
+neither fault correctly: it leaves the sideways sensor uncorrected, and a
+180° rotation is *not* a vertical flip (it is a vertical flip **plus** a
+horizontal one), so it silently mirrored every photo.
+
+`utils/camera_transform.py` now corrects both explicitly, deriving the
+angle from the device rather than hardcoding it:
+
+```
+upright = mirror( rotate_cw( θ, vflip( preview_frame ) ) )
+```
+
+where θ comes from `CameraInfo.orientation` combined with the current
+display rotation, per Android's documented formula. The live preview
+applies this as a canvas transform (free, on the GPU) and `capture_image()`
+applies the identical triple to the texture bytes with Pillow — so the
+photo handed to the classifier is always oriented exactly like the preview
+it was framed in. `tests/test_camera_transform.py` forward-models the whole
+pipeline and asserts the round-trip is exact for all four rotations.
+
+Because some vendor ROMs misreport sensor orientation and no one can test
+every handset, the computed angle is only a **default**: a **Rotate** button
+on the camera preview adds a 90° offset that is persisted
+(`utils/app_settings.py`), so any remaining device quirk is a one-tap fix
+that survives restarts.
+
+### "Uncertain, closest guess: Beetle" for photos that were not plants
+
+This was **not** a symptom of the orientation bug, as previously assumed. It
+was the model doing exactly what a closed-set softmax must do. Measured on
+the previous build:
+
+| Input | Prediction |
+|---|---|
+| pure black frame | Healthy Leaf, 97.4% |
+| flat gray wall | Healthy Leaf, 98.7% |
+| random noise | Healthy Leaf, 99.1% |
+| skin tone | Healthy Leaf, 99.3% |
+| photo of a person in a dark room | Healthy Leaf, 62.8% |
+
+Every one of those cleared the old 0.60 confidence threshold, so raising
+the threshold was never going to help — the model was not unsure, it was
+confidently wrong, and `Healthy Leaf` was acting as a sink for everything
+unfamiliar. See **"Knowing when not to answer"** below for the fix.
+
+## Knowing when not to answer
+
+Telling a farmer their crop is healthy when the camera was pointing at a
+wall is the worst failure this app can have, so refusing to answer is
+treated as a first-class outcome. Three independent layers have to agree
+before a diagnosis is shown:
+
+1. **Quality gate** — `utils/image_quality.py`, runs before the network.
+   Rejects frames that are too dark, blown out, blurred or featureless,
+   using only numpy + Pillow (OpenCV is not in the Android build). Every
+   threshold is calibrated against this project's own data — run
+   `python train/calibrate_thresholds.py` to see the metric distributions
+   and the false-reject rate.
+
+2. **A "Not Plant" class** — the model is trained on a 14th class of
+   people, hands, furniture, walls, floors, animals, food, roads, screens
+   and dim indoor shots, so it can say "this is not a plant" directly
+   instead of being forced to name a disease. Populate it with
+   `python train/fetch_negatives.py`.
+
+3. **Embedding distance (open-set check)** — the negative class can only
+   cover things someone thought to include. So the model also exports the
+   1280-d feature vector behind its prediction, and `model/ood_stats.json`
+   records the average vector of each plant class. A photo whose features
+   sit far from every class centroid is refused even when the softmax was
+   confident and the negative class missed it. Both outputs come from one
+   forward pass, so this costs no extra inference time on the phone.
+
+Only if all three pass is a result shown as a diagnosis; a small margin
+between the top two classes downgrades it to *uncertain*. `predict()`
+returns a `status` (`ok` / `uncertain` / `not_plant` / `unusable`) and the
+UI branches on that, never on the confidence number. A refusal shows no
+pest name and no treatment advice — the guess was the harm, not the wording
+around it.
+
+### Verifying it
+
+Ordinary validation accuracy cannot catch this class of bug: the previous
+model scored 90% while also calling a black frame a healthy leaf, because
+no non-plant image was ever in the validation set.
+
+```bash
+python train/evaluate_rejection.py --fetch
+```
+
+This downloads a set of negatives from Wikimedia Commons categories
+**deliberately disjoint** from the ones used for training (into
+`train/eval_negatives/`, outside `data/dataset/`, so training can never see
+them) and then measures two rates with explicit pass/fail budgets:
+
+- **sensitivity** — real plant photos must still be diagnosed
+- **specificity** — non-plant photos must be refused
+
+Measured on the current model:
+
+| Check | Result | Budget |
+|---|---|---|
+| Real plant photos wrongly refused | **5.2%** | ≤ 15% |
+| Unseen non-plant photos refused (153 held-out images) | **98.0%** | ≥ 85% |
+| Synthetic junk frames given a diagnosis | **0.0%** | ≤ 2% |
+| `Not Plant` recall on the validation split | **98.4%** | — |
+
+The same non-leaf inputs, before and after:
+
+| Input | Before | After |
+|---|---|---|
+| pure black frame | Healthy Leaf 97% | Too dark to identify |
+| gray wall | Healthy Leaf 99% | Nothing clear in the frame |
+| skin tone | Healthy Leaf 99% | Nothing clear in the frame |
+| random noise | Healthy Leaf 99% | No plant or leaf detected |
+| wood table | Healthy Leaf 99% | No plant or leaf detected |
+| photo of a person in a dark room | Healthy Leaf 63% | No plant or leaf detected |
+
+### What it costs
+
+Refusing has a price, and it is worth stating honestly. Over 390 real
+plant photos:
+
+| | Old build | New build |
+|---|---|---|
+| Names the correct pest (refusals counted as misses) | 90.3% | 86.7% |
+| Willing to give a diagnosis at all | 100% | 95.1% |
+| **Correct when it does answer** | **90.3%** | **91.2%** |
+
+So the drop in raw top-1 is entirely the app declining to answer on ~5% of
+photos — mostly genuinely dark or blurred ones. When it does answer it is
+slightly *more* accurate than before, and it no longer answers at all when
+there is no plant in the picture.
+
+Overall validation accuracy also moved from 90.1% to 84.6%, but the two
+numbers are not comparable: the task changed from 13 classes to 14, and the
+new one ("Not Plant", 98.4% recall) is a far larger and more varied class
+than any pest. Per-class accuracy on the pest classes is essentially
+unchanged — the weak ones (Aphids, Armyworm, Stem Borer) were weak before
+and are weak for the same reason, too few training images.
 
 ## Notes on the Android build (issues already hit and fixed)
 

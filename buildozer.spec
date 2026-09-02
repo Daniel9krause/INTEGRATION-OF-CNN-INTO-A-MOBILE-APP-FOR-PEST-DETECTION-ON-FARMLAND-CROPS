@@ -8,7 +8,12 @@ source.include_exts = py,png,jpg,jpeg,kv,json,txt,tflite
 # Keep the training-image dataset, local scan history, and grown dataset
 # OUT of the APK — they're huge, personal, and not needed for the app to
 # run (only for retraining, which happens on a dev machine, not on-device).
-source.exclude_dirs = dataset,storage,collected_data,train,.github,.git,__pycache__
+# Buildozer prefix-matches these against each file's path RELATIVE TO
+# source.dir, so entries must be full relative paths: plain "dataset" never
+# matched "data/dataset/..." and the APK was silently shipping ~99 MB of
+# training images. Only advisory_data.json is needed at runtime out of
+# data/; the model itself ships as model/pest_model.tflite.
+source.exclude_dirs = data/dataset,storage,collected_data,train,tests,venv,bin,.buildozer,.github,.git,__pycache__
 
 version = 1.0
 

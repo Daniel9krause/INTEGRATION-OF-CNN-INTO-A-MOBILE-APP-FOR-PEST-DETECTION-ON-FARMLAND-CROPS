@@ -14,7 +14,17 @@ from kivy.uix.button import Button
 from kivy.app import App
 from kivy.metrics import dp
 
-from screens.result_screen import build_result_info
+from utils.result_presentation import present
+
+
+def _row_value(row, key, default=None):
+    """sqlite3.Row has no .get(), and history written by the previous build
+    predates the status/headline/detail columns."""
+    try:
+        value = row[key]
+    except (IndexError, KeyError):
+        return default
+    return default if value is None else value
 
 
 class HistoryRow(BoxLayout):
@@ -26,11 +36,26 @@ class HistoryRow(BoxLayout):
         thumb = AsyncImage(source=scan_row["image_path"], size_hint_x=0.25, allow_stretch=True)
         self.add_widget(thumb)
 
+        # Refused scans show no percentage. A row reading "Beetle • 62.8%"
+        # for a photo the app actually refused to diagnose is the same
+        # false reassurance the result screen was fixed to avoid, just one
+        # screen further away from where it was explained.
+        status = _row_value(scan_row, "status", "ok")
+        view = present(status, scan_row["predicted_label"], scan_row["confidence"],
+                       _row_value(scan_row, "headline", ""),
+                       _row_value(scan_row, "detail", ""))
+        if view["show_confidence"]:
+            subtitle = (f"{view['group_text']} • {scan_row['confidence'] * 100:.1f}%"
+                        f"  |  {scan_row['created_at']}")
+        else:
+            subtitle = f"{view['group_text']}  |  {scan_row['created_at']}"
+
         info = BoxLayout(orientation="vertical", size_hint_x=0.55)
-        info.add_widget(Label(text=f"[b]{scan_row['predicted_label']}[/b]", markup=True,
+        info.add_widget(Label(text=f"[b]{view['display_label']}[/b]", markup=True,
+                               color=view["confidence_color"],
                                halign="left", valign="middle", size_hint_y=0.5))
-        info.add_widget(Label(text=f"{scan_row['group_name']} • {scan_row['confidence']*100:.1f}%  |  {scan_row['created_at']}",
-                               font_size="11sp", halign="left", valign="middle", size_hint_y=0.5))
+        info.add_widget(Label(text=subtitle, font_size="11sp",
+                               halign="left", valign="middle", size_hint_y=0.5))
         self.add_widget(info)
 
         view_btn = Button(text="View", size_hint_x=0.2)
@@ -62,24 +87,35 @@ class HistoryScreen(Screen):
     def _open_scan(self, scan_row):
         app = App.get_running_app()
         result_screen = app.root.get_screen("result")
-        # Re-render a saved result without re-running inference. Reuses the
-        # same confidence-threshold logic ResultScreen uses on a fresh scan,
-        # so a low-confidence result still shows as "Uncertain" here too,
-        # not as a confident match just because it's stored under a real
-        # class name.
+        # Re-render a saved result without re-running inference, through the
+        # same presentation logic a fresh scan uses. The stored `status` is
+        # what drives it: a scan that was refused at capture time ("No plant
+        # detected", "Too dark") redisplays as a refusal here too. Deriving
+        # this from the confidence number - as this screen used to - could
+        # resurrect a refused scan as a confident diagnosis, since the row is
+        # stored under a real class name either way.
         label = scan_row["predicted_label"]
         confidence = scan_row["confidence"]
-        display_label, info, color = build_result_info(label, confidence)
+        status = _row_value(scan_row, "status", "ok")
+        view = present(status, label, confidence,
+                       _row_value(scan_row, "headline", ""),
+                       _row_value(scan_row, "detail", ""))
 
         result_screen.image_path = scan_row["image_path"]
-        result_screen.label_text = display_label
-        result_screen.confidence_text = f"{confidence * 100:.1f}% confidence"
-        result_screen.confidence_value = confidence * 100
-        result_screen.confidence_color = color
-        result_screen.group_text = info["group"]
-        result_screen.description_text = info["description"]
-        result_screen.advisory_text = info["advisory"]
-        result_screen.show_flag_button = (info["group"] != "Unknown")
+        result_screen.label_text = view["display_label"]
+        result_screen.confidence_color = view["confidence_color"]
+        result_screen.group_text = view["group_text"]
+        result_screen.description_text = view["description_text"]
+        result_screen.advisory_text = view["advisory_text"]
+        result_screen.show_confidence = view["show_confidence"]
+        result_screen.show_advisory = view["show_advisory"]
+        result_screen.show_flag_button = view["show_flag_button"]
+        if view["show_confidence"]:
+            result_screen.confidence_text = f"{confidence * 100:.1f}% confidence"
+            result_screen.confidence_value = confidence * 100
+        else:
+            result_screen.confidence_text = ""
+            result_screen.confidence_value = 0
 
         app.root.current = "result"
 

@@ -17,18 +17,44 @@
                 bold: True
                 font_size: "16sp"
 
-        BoxLayout:
-            id: camera_container
-            # The actual camera widget (Kivy Camera on Android, or
-            # CameraPreview on desktop) is added here at runtime in
-            # home_screen.py, since which one to use depends on platform.
+        # The camera preview, with the rotate control floating over its
+        # bottom-right corner. Overlaying rather than adding another row
+        # keeps the preview as large as possible on a small phone screen.
+        FloatLayout:
+            BoxLayout:
+                id: camera_container
+                size_hint: 1, 1
+                pos_hint: {"x": 0, "y": 0}
+                # The camera widget (Kivy Camera wrapped in OrientedCamera on
+                # Android, CameraPreview on desktop) is added here at runtime
+                # in home_screen.py, since which one to use depends on platform.
+
+            Button:
+                text: "Rotate"
+                font_size: "12sp"
+                size_hint: None, None
+                size: dp(74), dp(34)
+                pos_hint: {"right": 0.97, "y": 0.03}
+                background_color: 0, 0, 0, 0.55
+                on_release: root.rotate_camera()
 
         Label:
             id: status_label
             text: ""
             size_hint_y: None
-            height: dp(24)
-            color: 1, 0.3, 0.3, 1
+            height: dp(34)
+            font_size: "12sp"
+            halign: "center"
+            valign: "middle"
+            text_size: self.width - dp(16), None
+            color: 1, 0.45, 0.35, 1
+
+        Label:
+            text: "Fill the frame with the leaf or pest, in good light"
+            size_hint_y: None
+            height: dp(20)
+            font_size: "11sp"
+            color: 0.55, 0.55, 0.55, 1
 
         BoxLayout:
             size_hint_y: None

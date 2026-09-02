@@ -11,3 +11,4 @@ Mosaic Virus
 Beetle
 Moth
 Weevil
+Not Plant

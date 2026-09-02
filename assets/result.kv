@@ -17,24 +17,30 @@
                 text: root.label_text
                 bold: True
                 font_size: "20sp"
+                color: root.confidence_color
                 size_hint_y: None
                 height: self.texture_size[1]
                 halign: "left"
                 valign: "top"
                 text_size: self.width, None
 
+            # Confidence is hidden entirely when no diagnosis was made.
+            # A "0.0%" bar under "No plant detected" reads as a confident
+            # all-clear to anyone skimming the screen.
             Label:
                 text: root.confidence_text
                 font_size: "14sp"
                 color: root.confidence_color
                 size_hint_y: None
-                height: dp(22)
+                height: dp(22) if root.show_confidence else 0
+                opacity: 1 if root.show_confidence else 0
 
             ProgressBar:
                 max: 100
                 value: root.confidence_value
                 size_hint_y: None
-                height: dp(14)
+                height: dp(14) if root.show_confidence else 0
+                opacity: 1 if root.show_confidence else 0
 
             Label:
                 text: "Organism Group: [b]" + root.group_text + "[/b]"
@@ -54,18 +60,21 @@
                 text_size: self.width, None
                 font_size: "13sp"
 
+            # For a refusal this box carries "how to retake the photo",
+            # never a treatment recommendation - see utils/result_presentation.
             Label:
-                text: "Advisory:\n" + root.advisory_text
+                text: ("Advisory:\n" + root.advisory_text) if root.show_advisory else ""
                 color: 0, 0, 0, 1
                 halign: "left"
                 valign: "top"
                 text_size: self.width - dp(16), None
                 padding: dp(8), dp(8)
                 size_hint_y: None
-                height: self.texture_size[1] + dp(16)
+                height: (self.texture_size[1] + dp(16)) if root.show_advisory else 0
+                opacity: 1 if root.show_advisory else 0
                 canvas.before:
                     Color:
-                        rgba: 0.9, 0.97, 0.9, 1
+                        rgba: (0.9, 0.97, 0.9, 1) if root.show_advisory else (0, 0, 0, 0)
                     Rectangle:
                         pos: self.pos
                         size: self.size

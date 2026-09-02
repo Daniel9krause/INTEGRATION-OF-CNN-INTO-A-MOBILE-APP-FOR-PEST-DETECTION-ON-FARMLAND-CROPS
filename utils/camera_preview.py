@@ -48,6 +48,18 @@ class CameraPreview(Image):
         texture.blit_buffer(buf, colorfmt="bgr", bufferfmt="ubyte")
         self.texture = texture
 
+    def last_frame_pil(self):
+        """Most recent frame as a Pillow RGB image, or None.
+
+        HomeScreen puts this through the same orientation transform as the
+        Android capture path, so the Rotate button behaves identically on
+        desktop and the saved photo always matches the preview.
+        """
+        if self._last_frame is None:
+            return None
+        from PIL import Image
+        return Image.fromarray(cv2.cvtColor(self._last_frame, cv2.COLOR_BGR2RGB))
+
     def capture_to_file(self, filepath):
         """Save the most recent frame to disk. Returns True on success."""
         if self._last_frame is None:

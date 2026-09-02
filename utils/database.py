@@ -39,14 +39,41 @@ class ScanDatabase:
                 created_at TEXT NOT NULL
             )
         """)
+        self._migrate()
         self.conn.commit()
 
-    def add_scan(self, image_path, predicted_label, confidence, group_name, flagged_new=False):
+    def _migrate(self):
+        """Add columns introduced after the first release.
+
+        History has to be able to redisplay a past scan exactly as it was
+        shown at the time, including a refusal ("No plant detected", "Too
+        dark"). Deriving that from confidence alone is impossible - a
+        refused scan and a genuine low-confidence match both store a small
+        number - so the outcome is recorded explicitly.
+
+        Phones in the field already hold a scans table from the previous
+        build, so this adds the columns in place rather than recreating the
+        table and losing the farmer's history.
+        """
+        existing = {row["name"] for row in self.conn.execute("PRAGMA table_info(scans)")}
+        for column, ddl in (
+            # "ok" | "uncertain" | "not_plant" | "unusable"; rows written by
+            # the previous build have NULL and are treated as "ok".
+            ("status", "ALTER TABLE scans ADD COLUMN status TEXT"),
+            ("headline", "ALTER TABLE scans ADD COLUMN headline TEXT"),
+            ("detail", "ALTER TABLE scans ADD COLUMN detail TEXT"),
+        ):
+            if column not in existing:
+                self.conn.execute(ddl)
+
+    def add_scan(self, image_path, predicted_label, confidence, group_name,
+                 flagged_new=False, status="ok", headline="", detail=""):
         cur = self.conn.execute(
-            """INSERT INTO scans (image_path, predicted_label, confidence, group_name, flagged_new, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO scans (image_path, predicted_label, confidence, group_name,
+                                  flagged_new, created_at, status, headline, detail)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (image_path, predicted_label, confidence, group_name, int(flagged_new),
-             datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+             datetime.now().strftime("%Y-%m-%d %H:%M:%S"), status, headline, detail),
         )
         self.conn.commit()
         return cur.lastrowid

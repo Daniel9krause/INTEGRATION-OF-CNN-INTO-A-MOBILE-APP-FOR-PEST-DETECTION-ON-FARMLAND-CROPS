@@ -10,6 +10,11 @@ Camera handling is platform-aware:
   - On desktop (Windows/Mac/Linux): uses our own `CameraPreview` (OpenCV),
     because Kivy 2.3.0's OpenCV camera provider has a known crash bug on
     Windows. See utils/camera_preview.py for details.
+
+On Android the preview is wrapped in an OrientedCamera, because Kivy hands
+back the raw landscape sensor frame with no rotation applied - which is why
+the camera appeared sideways until the phone itself was turned. The Rotate
+button on this screen adjusts and persists that correction per device.
 """
 
 import os
@@ -18,6 +23,8 @@ from kivy.uix.screenmanager import Screen
 from kivy.utils import platform
 from kivy.app import App
 from kivy.clock import Clock
+
+from utils import camera_transform
 
 if platform == "android":
     from android.storage import app_storage_path
@@ -37,6 +44,7 @@ _UPLOAD_REQUEST_CODE = 0x1DEA
 
 class HomeScreen(Screen):
     _camera_widget = None
+    _oriented = None          # OrientedCamera wrapper around _camera_widget
     _using_native_camera = False
 
     def on_pre_enter(self, *args):
@@ -71,45 +79,56 @@ class HomeScreen(Screen):
                 from kivy.uix.camera import Camera
                 self._camera_widget = Camera(resolution=(640, 480), play=False, index=0)
                 self._using_native_camera = True
-                self._fix_camera_orientation(self._camera_widget)
             else:
                 from utils.camera_preview import CameraPreview
                 self._camera_widget = CameraPreview(index=0, fps=24)
                 self._using_native_camera = False
-            container.add_widget(self._camera_widget)
+
+            # Kivy does no orientation handling for the Android camera, so
+            # the preview arrives sideways (landscape sensor) and flipped.
+            # OrientedCamera corrects it, and capture_image() reuses the
+            # very same transform so the saved photo matches the preview.
+            # See utils/camera_transform.py for the full derivation.
+            vflip, rotation, mirror = camera_transform.current_transform(
+                camera_index=0, native_android=self._using_native_camera
+            )
+            self._oriented = camera_transform.OrientedCamera(
+                self._camera_widget, vflip=vflip, rotation_cw=rotation, mirror=mirror
+            )
+            container.add_widget(self._oriented)
         except Exception as e:
             # Camera permission denied, no camera hardware, or another app
             # already holding it — don't crash, just fall back to Upload.
             print(f"[HomeScreen] Camera unavailable: {e}")
             self._camera_widget = None
+            self._oriented = None
             self._show_status("Camera unavailable — use Upload instead, or check camera permission in Settings.")
 
-    @staticmethod
-    def _fix_camera_orientation(widget):
-        """Kivy's Camera widget renders upside-down on many Android
-        devices - a long-documented Kivy/Android quirk in how the camera
-        sensor's native (landscape) orientation ends up in the preview
-        texture. Rotating the widget's own canvas 180 degrees corrects
-        both the live preview AND export_to_png() captures, since
-        export_to_png renders through this same canvas rather than
-        reading raw texture bytes directly. (If a particular device
-        instead shows a 90-degree sideways rotation rather than upside-
-        down, this angle is the one thing to change.)"""
-        from kivy.graphics import PushMatrix, PopMatrix, Rotate
+    def rotate_camera(self):
+        """Turn the preview a quarter turn and remember it.
 
-        with widget.canvas.before:
-            PushMatrix()
-            rotate = Rotate(angle=180, origin=widget.center)
-        with widget.canvas.after:
-            PopMatrix()
+        The default angle is computed from the device's own reported sensor
+        orientation, which is right on most handsets - but some vendor ROMs
+        misreport it, and there is no way to verify every phone. Rather than
+        leave a farmer with a sideways camera they cannot fix, this exposes
+        the correction directly: tap until the preview looks right, and the
+        offset is persisted, so it stays fixed on every later launch.
+        """
+        offset = camera_transform.cycle_rotation_offset(90)
+        self._refresh_orientation()
+        self._show_status(f"Camera rotated ({offset}°) — saved for next time.")
 
-        def _update_origin(instance, _value):
-            rotate.origin = instance.center
-
-        widget.bind(pos=_update_origin, size=_update_origin)
+    def _refresh_orientation(self):
+        if getattr(self, "_oriented", None) is None:
+            return
+        vflip, rotation, mirror = camera_transform.current_transform(
+            camera_index=0, native_android=self._using_native_camera
+        )
+        self._oriented.set_transform(vflip, rotation, mirror)
 
     def capture_image(self):
-        """Grab the current camera frame and save it as a real image file."""
+        """Grab the current camera frame and save it as a real image file,
+        oriented exactly as the farmer framed it in the preview."""
         if self._camera_widget is None:
             self._show_status("Camera not ready yet — try again in a second.")
             return
@@ -119,14 +138,29 @@ class HomeScreen(Screen):
 
         try:
             if self._using_native_camera:
-                if self._camera_widget.texture is None:
+                texture = self._camera_widget.texture
+                if texture is None:
                     self._show_status("Camera not ready yet — try again in a second.")
                     return
-                self._camera_widget.export_to_png(filepath)
+                # Read the texture directly rather than export_to_png():
+                # export_to_png re-renders the *widget*, so it baked in the
+                # letterbox bars and threw away sensor resolution. The
+                # transform applied here is the same triple the preview is
+                # showing, so what was framed is what gets classified.
+                vflip, rotation, mirror = self._oriented.transform
+                image = camera_transform.texture_to_pil(texture, vflip, rotation, mirror)
+                image.save(filepath, "JPEG", quality=92)
             else:
-                if not self._camera_widget.capture_to_file(filepath):
+                frame = self._camera_widget.last_frame_pil()
+                if frame is None:
                     self._show_status("Camera not ready yet — try again in a second.")
                     return
+                # Desktop needs no sensor correction, but it must still honour
+                # the Rotate button, or preview and capture disagree here in
+                # exactly the way this change fixes on Android.
+                vflip, rotation, mirror = self._oriented.transform
+                image = camera_transform.apply_to_pil(frame, vflip, rotation, mirror)
+                image.save(filepath, "JPEG", quality=92)
         except Exception as e:
             # Disk full, storage permission revoked mid-session, etc.
             print(f"[HomeScreen] Capture failed: {e}")
