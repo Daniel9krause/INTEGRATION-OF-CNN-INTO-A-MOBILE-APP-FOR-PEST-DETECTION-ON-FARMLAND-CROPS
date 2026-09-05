@@ -3,27 +3,37 @@ test_camera_transform
 ----------------------
 Verifies the camera orientation maths without needing an Android device.
 
-The bug this guards against is subtle and was shipped once already: the
-previous fix rotated the preview a hardcoded 180 degrees, which is not the
-same operation as the vertical flip Kivy's Fbo actually introduces (180
-degrees = vertical flip AND horizontal flip), so it silently mirrored every
-photo while still leaving the sideways sensor uncorrected.
+The bug this guards against is subtle and was shipped TWICE. Both times the
+correction added a REFLECTION to a problem that is only ever a rotation:
 
-Two properties are checked here:
+  - the first fix rotated a hardcoded 180 degrees (= a vertical flip AND a
+    horizontal one), leaving the sideways sensor uncorrected as well;
+  - the second derived the rotation correctly but also flipped the frame
+    top-to-bottom, on the belief that Kivy's Fbo inverts it.
+
+Neither is visible in a still photo. A mirrored preview looks like a
+perfectly ordinary picture right up until you move the phone and the scene
+slides the wrong way - which is exactly why it survived a release, and why
+the parity is asserted here directly rather than inferred.
+
+Three properties are checked:
 
   1. compute_rotation() matches Android's documented formula for the
      sensor/display combinations real phones report.
 
-  2. The preview transform and the capture transform agree. This is the one
-     that matters: if they ever diverge, the farmer frames a leaf in the
-     preview and the classifier receives a differently-oriented image, and
-     nothing in the UI would reveal it.
+  2. The pipeline never mirrors. Whatever rotation is in force, the output
+     must be a pure rotation of the input - something you could reach by
+     turning the original - and never one of its reflections.
 
-Property 2 is tested by forward-modelling the whole pipeline. Starting from
-a known upright image we synthesise what the sensor would produce, what
-Kivy's Fbo would then display, and what bytes texture.pixels would hand
-back - then assert that texture_to_pil() recovers the original upright
-image exactly.
+  3. The preview transform and the capture transform agree. If they ever
+     diverge, the farmer frames a leaf in the preview and the classifier
+     receives a differently-oriented image, and nothing in the UI would
+     reveal it.
+
+Property 3 is tested by forward-modelling the whole pipeline. Starting from
+a known upright image we synthesise what the sensor would produce and what
+bytes texture.pixels would hand back - then assert that texture_to_pil()
+recovers the original upright image exactly.
 
 Run:  python tests/test_camera_transform.py
 """
@@ -58,7 +68,10 @@ class FakeTexture:
     Kivy stores texture rows bottom-first, so `pixels` is the displayed
     image flipped top-to-bottom - reproduced faithfully here, because that
     flip is exactly the kind of detail an implementation can get wrong in a
-    way that only shows up on a phone.
+    way that only shows up on a phone. Note it is a fact about how the bytes
+    are handed over, not about the frame's orientation: undoing it is not
+    the same thing as the `vflip` correction stage, and conflating the two
+    is what mirrored the preview.
     """
 
     def __init__(self, displayed_rgb, colorfmt="bgr"):
@@ -113,6 +126,35 @@ def test_compute_rotation():
               for s in (0, 90, 180, 270) for d in (0, 90, 180, 270)))
 
 
+def test_pipeline_never_mirrors():
+    """The regression that brought the farmer back twice.
+
+    A rotation can be worked around by turning the phone; a reflection
+    cannot be worked around at all, and the user cannot even name what is
+    wrong - the picture looks fine, it just refuses to be aimed. So assert
+    the parity head-on: whatever the rotation, the output must be one of the
+    four rotations of the input and none of its four reflections.
+    """
+    print("\nthe transform rotates and never reflects")
+    img = make_asymmetric_image()
+    rotations = [np.asarray(rotate_cw(img, d)) for d in (0, 90, 180, 270)]
+    mirrored = img.transpose(Image.FLIP_LEFT_RIGHT)
+    reflections = [np.asarray(rotate_cw(mirrored, d)) for d in (0, 90, 180, 270)]
+
+    for rotation in (0, 90, 180, 270):
+        out = np.asarray(ct.apply_to_pil(
+            img, ct.ANDROID_PREVIEW_IS_VFLIPPED, rotation, False))
+        check(f"rotation {rotation:3d} deg output is a rotation of the input",
+              any(np.array_equal(out, r) for r in rotations),
+              "output is not reachable by turning the original")
+        check(f"rotation {rotation:3d} deg output is not mirrored",
+              not any(np.array_equal(out, r) for r in reflections),
+              "output is a reflection - the preview runs backwards")
+
+    check("the Android default adds no flip of its own",
+          ct.ANDROID_PREVIEW_IS_VFLIPPED is False, ct.ANDROID_PREVIEW_IS_VFLIPPED)
+
+
 def test_capture_matches_preview():
     """Forward-model the Android pipeline and check we invert it exactly."""
     print("\ncapture recovers the upright image the preview showed")
@@ -123,9 +165,10 @@ def test_capture_matches_preview():
         #    clockwise, would look upright. So the sensor frame is the
         #    upright image turned back the other way.
         sensor = rotate_cw(upright, -rotation)
-        # 2. Kivy draws that into an Fbo with GL's opposite row convention,
-        #    flipping it top-to-bottom.
-        displayed = sensor.transpose(Image.FLIP_TOP_BOTTOM)
+        # 2. Kivy hands that frame straight through - its Fbo shader samples
+        #    plain tex_coord0, and the Fbo texture shares GL's row convention
+        #    with the widget that draws it, so nothing is inverted on the way.
+        displayed = sensor
         # 3. texture.pixels hands the rows back bottom-first.
         texture = FakeTexture(displayed)
 
@@ -170,6 +213,7 @@ def main():
     print("camera transform tests")
     print("=" * 60)
     test_compute_rotation()
+    test_pipeline_never_mirrors()
     test_capture_matches_preview()
     test_mirror_and_flip_are_distinct()
     test_apply_to_pil_shapes()

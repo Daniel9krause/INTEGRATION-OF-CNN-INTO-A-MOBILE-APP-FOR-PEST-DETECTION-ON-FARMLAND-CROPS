@@ -18,7 +18,7 @@ so and declines to diagnose rather than guessing — see
 | Refuse to guess on non-plants / unusable photos | `utils/image_quality.py` + the `Not Plant` class + `model/ood_stats.json` — see [Knowing when not to answer](#knowing-when-not-to-answer) |
 | View Classification Result | `screens/result_screen.py` |
 | View Advisory Information | Built into Result screen + standalone `screens/advisory_screen.py` |
-| View Scan History | `screens/history_screen.py` + `utils/database.py` (SQLite) |
+| View Scan History | `screens/history_screen.py` + `utils/database.py` (SQLite) — each row has **View** and **Remove**; Remove deletes that one scan and its photo after a confirmation, so a list full of blurred retries can be tidied without clearing the lot |
 | Store new pest info gathered | `utils/data_collector.py` — files every captured image into a class-labeled folder, growing your own dataset over time, plus a "flag as new/unknown organism" button on the Result screen |
 
 ## Project structure
@@ -220,6 +220,12 @@ workflow to build in the cloud for free:
 
 - **Scan history**: SQLite database in the app's private storage
   (`utils/database.py` → `app_storage_path()`), survives app restarts.
+  **Remove** on a history row deletes that row and the photo behind it;
+  **Clear History** does the same for every row. Both ask first, and both
+  only ever delete files inside the app's own `captures/` folder — a photo
+  you picked through **Upload** is copied in before it is recorded, so your
+  original in the gallery is never touched. The training copy under
+  `collected_data/` is a separate file and is also left alone.
 - **Collected dataset**: `collected_data/<ClassName>/` — every image you
   capture is automatically filed by predicted class. If you tap
   **"flag as new/unknown organism"** on a result, that image goes into
@@ -244,48 +250,67 @@ the picker `Intent` directly and reads the result through
 `ContentResolver.openFileDescriptor(...).detachFd()` into a plain OS file
 descriptor, which `os.fdopen()` reads natively.
 
-### The camera preview was rotated, not upside-down
+### The camera preview needed a rotation — and nothing else
 
 Kivy's Android camera provider does **no** orientation handling at all —
 in Kivy's own `camera_android.py` the call that would fix it is commented
-out (`# self._android_camera.setDisplayOrientation()`). Two separate faults
-result:
+out (`# self._android_camera.setDisplayOrientation()`). Phone sensors are
+mounted landscape and report `CameraInfo.orientation = 90` on almost every
+back camera, so Kivy passes the raw sensor frame straight through and a
+portrait app shows a sideways preview. That is why the phone had to be
+physically turned to frame a leaf.
 
-1. **Rotation.** Phone sensors are mounted landscape and report
-   `CameraInfo.orientation = 90` on almost every back camera. Kivy passes
-   the raw sensor frame straight through, so a portrait app shows a
-   sideways preview — which is why the phone had to be physically turned to
-   frame a leaf.
-2. **Vertical flip.** Kivy draws the camera's OES texture into an Fbo with
-   default texture coordinates. GL's texture origin is bottom-left,
-   Android's camera frames are top-left, and Kivy never applies the
-   `SurfaceTexture` transform matrix that reconciles them.
+That rotation is the *whole* fault, and getting there took three attempts,
+because the first two both added a **reflection** on top of it:
 
-An earlier fix here rotated the widget a hardcoded 180°, which addresses
-neither fault correctly: it leaves the sideways sensor uncorrected, and a
-180° rotation is *not* a vertical flip (it is a vertical flip **plus** a
-horizontal one), so it silently mirrored every photo.
+1. Rotate a hardcoded 180°. A 180° turn is a vertical flip **plus** a
+   horizontal one, so it left the sideways sensor uncorrected *and*
+   mirrored the frame.
+2. Derive the rotation properly from the sensor, but also un-flip the frame
+   top-to-bottom, on the theory that Kivy's Fbo hands it back inverted. It
+   does not: the fragment shader in `camera_android.py` computes a flipped
+   `coord` and then never uses it — it samples plain `tex_coord0` — and the
+   Fbo texture and the widget drawing it share GL's bottom-left row
+   convention, so the two cancel. A lone vertical flip added to a rotation
+   is, once again, a reflection.
 
-`utils/camera_transform.py` now corrects both explicitly, deriving the
-angle from the device rather than hardcoding it:
+**Why this took two goes.** A mirrored preview is invisible in a still
+frame. It looks like a perfectly ordinary photo; nothing is wrong until you
+*move*, and then panning the phone left slides the scene right and you
+cannot aim it at anything. Reflections also compose treacherously — a
+vertical flip followed by a quarter turn is pixel-for-pixel identical to a
+horizontal flip — so a wrong flip on *any* axis anywhere in the chain
+reaches the user as "the camera is mirrored", which tells you nothing about
+where it came from.
+
+`utils/camera_transform.py` now rotates, and only rotates:
 
 ```
-upright = mirror( rotate_cw( θ, vflip( preview_frame ) ) )
+upright = rotate_cw( θ, preview_frame )
 ```
 
 where θ comes from `CameraInfo.orientation` combined with the current
 display rotation, per Android's documented formula. The live preview
 applies this as a canvas transform (free, on the GPU) and `capture_image()`
-applies the identical triple to the texture bytes with Pillow — so the
+applies the identical transform to the texture bytes with Pillow — so the
 photo handed to the classifier is always oriented exactly like the preview
-it was framed in. `tests/test_camera_transform.py` forward-models the whole
-pipeline and asserts the round-trip is exact for all four rotations.
+it was framed in.
+
+`tests/test_camera_transform.py` forward-models the whole pipeline and
+asserts the round-trip is exact for all four rotations. It also asserts the
+*parity* directly, which is the check that would have caught both earlier
+attempts: whatever rotation is in force, the output must be one of the four
+rotations of the input and none of its four reflections.
 
 Because some vendor ROMs misreport sensor orientation and no one can test
-every handset, the computed angle is only a **default**: a **Rotate** button
-on the camera preview adds a 90° offset that is persisted
-(`utils/app_settings.py`), so any remaining device quirk is a one-tap fix
-that survives restarts.
+every handset, the computed angle is only a **default**. Two buttons on the
+camera preview persist a per-device correction (`utils/app_settings.py`),
+so anything left over is a one-tap fix that survives restarts:
+
+- **Rotate** — adds a 90° offset, for a preview that is sideways or upside
+  down.
+- **Flip** — mirrors the preview left-to-right, for a preview that runs
+  backwards when you pan the phone.
 
 ### "Uncertain, closest guess: Beetle" for photos that were not plants
 

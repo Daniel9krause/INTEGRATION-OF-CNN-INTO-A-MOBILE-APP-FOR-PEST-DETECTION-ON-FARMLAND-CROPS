@@ -163,6 +163,106 @@ def _test_end_to_end():
     App._running_app = None
 
 
+def _test_history_removal():
+    """Removing one scan takes its row and its photo, and nothing else.
+
+    The dangerous half of this feature is the file deletion, not the SQL:
+    History stores whatever path the row carries, and an image that came
+    from outside the app's own captures folder is somebody's original
+    photo. Deleting one of those while "tidying up a list" is not a bug the
+    user would forgive, so the guard is tested directly rather than trusted.
+    """
+    import tempfile
+
+    from kivy.app import App
+
+    from screens.history_screen import HistoryScreen, _discard_capture
+    from screens.home_screen import CAPTURE_DIR
+    from utils.database import ScanDatabase
+
+    print("\nhistory: removing a single scan")
+
+    tmp = tempfile.mkdtemp()
+
+    class _HeadlessApp(App):
+        pass
+
+    app = _HeadlessApp()
+    app.db = ScanDatabase(db_path=os.path.join(tmp, "scans.db"))
+    App._running_app = app
+
+    ours = os.path.join(CAPTURE_DIR, f"_test_remove_{os.getpid()}.jpg")
+    from PIL import Image as PILImage
+    PILImage.fromarray(np.zeros((8, 8, 3), np.uint8)).save(ours)
+
+    # An "uploaded from the gallery" path that was never copied in - the
+    # case the guard exists for.
+    theirs = os.path.join(tmp, "somebody_elses_photo.jpg")
+    PILImage.fromarray(np.zeros((8, 8, 3), np.uint8)).save(theirs)
+
+    keep_id = app.db.add_scan(theirs, "Leaf Spot", 0.91, "Fungal Disease", status="ok")
+    drop_id = app.db.add_scan(ours, "Aphids", 0.88, "Insect Pest", status="ok")
+
+    screen = HistoryScreen(name="history")
+    doomed = app.db.get_scan(drop_id)
+    screen._delete_scan(doomed)
+
+    remaining = [row["id"] for row in app.db.get_all_scans()]
+    check("the removed scan is gone from history", drop_id not in remaining, remaining)
+    check("the other scan is untouched", keep_id in remaining, remaining)
+    check("the removed scan's photo is deleted", not os.path.exists(ours))
+
+    # Same call, on a path this app never created.
+    _discard_capture(theirs)
+    check("a photo outside the captures folder is left alone",
+          os.path.exists(theirs))
+
+    check("a missing file is not an error", _discard_capture(ours) is None)
+    check("an empty path is not an error", _discard_capture("") is None)
+
+    # The confirmation dialog, driven without a window: Popup.open is stubbed
+    # so the test never needs a display, and the buttons are dispatched
+    # directly. Cancel is the case worth pinning - a dialog that deletes
+    # whichever button you press is worse than no dialog at all, and nothing
+    # in the UI would show it.
+    from kivy.uix.popup import Popup
+
+    real_open = Popup.open
+    opened = {}
+    Popup.open = lambda self, *a, **kw: opened.__setitem__("popup", self)
+    try:
+        survivor = app.db.get_scan(keep_id)
+        screen._confirm_delete(survivor)
+        popup = opened.get("popup")
+        check("Remove asks before deleting", popup is not None)
+
+        if popup is not None:
+            buttons = {b.text: b for b in popup.content.children[0].children}
+            check("the dialog offers both answers",
+                  set(buttons) == {"Remove", "Cancel"}, sorted(buttons))
+
+            buttons["Cancel"].dispatch("on_release")
+            check("cancelling keeps the scan",
+                  keep_id in [r["id"] for r in app.db.get_all_scans()])
+
+            opened.clear()
+            screen._confirm_delete(survivor)
+            popup = opened["popup"]
+            {b.text: b for b in popup.content.children[0].children}["Remove"] \
+                .dispatch("on_release")
+            check("confirming removes the scan",
+                  keep_id not in [r["id"] for r in app.db.get_all_scans()])
+            check("cancelled-then-confirmed still spares the outside photo",
+                  os.path.exists(theirs))
+    finally:
+        Popup.open = real_open
+
+    app.db.close()
+    App._running_app = None
+    if os.path.exists(ours):
+        os.remove(ours)
+
+
 def main():
     print("=" * 60)
     print("app smoke tests")
@@ -201,6 +301,7 @@ def main():
               list(home.ids))
         check("status_label id present", "status_label" in home.ids, list(home.ids))
         check("rotate_camera() is callable", callable(getattr(home, "rotate_camera", None)))
+        check("flip_camera() is callable", callable(getattr(home, "flip_camera", None)))
 
     print("\nresult screen reflects each verdict")
     result = screens.get("result")
@@ -304,6 +405,8 @@ def main():
     check("_row_value defaults a NULL status to ok",
           _row_value(rows[0], "status", "ok") == "ok")
     db.close()
+
+    _test_history_removal()
 
     _test_end_to_end()
 

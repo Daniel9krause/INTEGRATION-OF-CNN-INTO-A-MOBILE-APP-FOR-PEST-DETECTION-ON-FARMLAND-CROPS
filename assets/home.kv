@@ -17,7 +17,7 @@
                 bold: True
                 font_size: "16sp"
 
-        # The camera preview, with the rotate control floating over its
+        # The camera preview, with the orientation controls floating over its
         # bottom-right corner. Overlaying rather than adding another row
         # keeps the preview as large as possible on a small phone screen.
         FloatLayout:
@@ -29,14 +29,27 @@
                 # Android, CameraPreview on desktop) is added here at runtime
                 # in home_screen.py, since which one to use depends on platform.
 
-            Button:
-                text: "Rotate"
-                font_size: "12sp"
+            # Two fixes for two different faults: Rotate for a sideways
+            # preview, Flip for a mirrored one (the scene sliding the wrong
+            # way as the phone pans). Both are persisted per device - see
+            # utils/camera_transform.py.
+            BoxLayout:
                 size_hint: None, None
-                size: dp(74), dp(34)
+                size: dp(140), dp(34)
                 pos_hint: {"right": 0.97, "y": 0.03}
-                background_color: 0, 0, 0, 0.55
-                on_release: root.rotate_camera()
+                spacing: dp(6)
+
+                Button:
+                    text: "Flip"
+                    font_size: "12sp"
+                    background_color: 0, 0, 0, 0.55
+                    on_release: root.flip_camera()
+
+                Button:
+                    text: "Rotate"
+                    font_size: "12sp"
+                    background_color: 0, 0, 0, 0.55
+                    on_release: root.rotate_camera()
 
         Label:
             id: status_label

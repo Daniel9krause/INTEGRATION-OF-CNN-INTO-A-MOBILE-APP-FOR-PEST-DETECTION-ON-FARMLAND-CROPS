@@ -1,9 +1,9 @@
 """
 camera_transform
 -----------------
-Makes the Android camera preview come out upright, and guarantees that the
-photo we hand to the classifier is oriented exactly like the preview the
-farmer framed it in.
+Makes the Android camera preview come out upright AND the right way round,
+and guarantees that the photo we hand to the classifier is oriented exactly
+like the preview the farmer framed it in.
 
 THE PROBLEM
 -----------
@@ -13,42 +13,53 @@ commented out in Kivy's own source:
 
     # self._android_camera.setDisplayOrientation()
 
-Two separate things then go wrong:
+Phone camera sensors are mounted landscape. A back sensor reports
+orientation=90, meaning its frames need a 90 degree clockwise turn to look
+upright to someone holding the phone in portrait. Kivy hands the raw sensor
+frame straight to the widget, so the preview lies on its side and the farmer
+has to physically turn the phone to frame a leaf.
 
-1. ROTATION. Phone camera sensors are mounted landscape. A back sensor
-   reports orientation=90, meaning its frames need a 90 degree clockwise
-   turn to look upright to someone holding the phone in portrait. Kivy
-   hands the raw sensor frame straight to the widget, so the preview lies
-   on its side and the farmer has to physically rotate the phone to frame
-   a leaf.
+That rotation is the whole of the problem. Two earlier fixes each added a
+REFLECTION on top of it, which is a nastier class of mistake because a
+reflected preview still looks like a perfectly ordinary photo - it just runs
+backwards. Nothing is wrong until you move: pan the phone left and the scene
+slides right, so you cannot aim it at a leaf.
 
-2. VERTICAL FLIP. Kivy renders the camera's OES texture into an Fbo with
-   default texture coordinates. GL texture space has its origin bottom-
-   left, Android camera frames have theirs top-left, and Kivy never
-   applies the SurfaceTexture transform matrix that would reconcile them -
-   so the frame lands in the Fbo flipped top-to-bottom. This is the
-   long-standing "Kivy Android camera is upside down" report.
+  - The first rotated a hardcoded 180 degrees. A 180 degree turn is a
+    vertical flip PLUS a horizontal one, so it left the sideways sensor
+    uncorrected and mirrored the frame.
 
-A previous fix here rotated the widget a hardcoded 180 degrees. That is
-the wrong correction for both faults: it does not address the sideways
-sensor at all, and a 180 degree rotation is not a vertical flip (it is a
-vertical flip PLUS a horizontal one), so it silently mirrored the image.
+  - The second derived the rotation properly, but also flipped the frame
+    top-to-bottom, on the theory that Kivy's Fbo hands back an upside-down
+    frame. It does not. The fragment shader in camera_android.py computes a
+    flipped `coord` and then never uses it - it samples plain `tex_coord0` -
+    and the Fbo texture and the widget drawing it share GL's bottom-left row
+    convention, so nothing is inverted. A lone vertical flip added to a
+    rotation is, again, a reflection.
+
+Reflections compose treacherously, which is why this took two goes. A
+vertical flip followed by a quarter turn is pixel-for-pixel the same thing
+as a horizontal flip; a wrong flip on ANY axis anywhere in the chain
+surfaces to the user as "the camera is mirrored". So the only safe rule is
+to count them: an upright, un-mirrored preview needs an EVEN number of
+flips, and the honest answer here is zero.
 
 THE FIX
 -------
-Correct both faults explicitly, deriving the rotation from the device
-rather than hardcoding it:
+Rotate, and only rotate:
 
-    upright = mirror( rotate_cw( theta, vflip( preview_frame ) ) )
+    upright = rotate_cw( theta, preview_frame )
 
 where theta comes from Android's own CameraInfo.orientation combined with
 the current display rotation - the formula Android's camera documentation
 prescribes.
 
-Because some vendor ROMs misreport sensor orientation, and because we
-cannot test every handset, the computed angle is only a DEFAULT: the Home
-screen exposes a Rotate button that adds a persisted 90 degree offset, so
-any remaining device quirk is a one-tap fix that survives restarts.
+The flip stages stay in the pipeline rather than being deleted, but both now
+default to off. Because some vendor ROMs misreport sensor orientation, and
+because we cannot test every handset, the computed angle is only a DEFAULT:
+the Home screen exposes a Rotate button that adds a persisted 90 degree
+offset, and a Flip button that adds a persisted mirror, so any remaining
+device quirk is a one-tap fix that survives restarts.
 
 Both the live preview (via a canvas transform, free on the GPU) and the
 saved capture (via Pillow, on the texture bytes) go through the same
@@ -61,10 +72,14 @@ from kivy.utils import platform
 
 from utils import app_settings
 
-# Whether the preview frame arrives flipped top-to-bottom. True only for
-# Kivy's Android provider, for the Fbo reason described above; the desktop
-# CameraPreview in utils/camera_preview.py already hands us upright frames.
-ANDROID_PREVIEW_IS_VFLIPPED = True
+# Whether the preview frame arrives flipped top-to-bottom. False: neither
+# Kivy's Android provider nor the desktop CameraPreview in
+# utils/camera_preview.py inverts the frame, so correcting for a flip that
+# is not there is what mirrored the preview (see THE PROBLEM above). Kept as
+# a named constant rather than being deleted, because it is the one knob to
+# reach for if a future Kivy release starts applying the SurfaceTexture
+# transform matrix - and because the tests pin the behaviour to it.
+ANDROID_PREVIEW_IS_VFLIPPED = False
 
 
 def compute_rotation(sensor_orientation, display_degrees, front_facing=False):
@@ -146,6 +161,14 @@ def cycle_rotation_offset(step=90):
 
 
 def toggle_mirror():
+    """Flip the preview left-to-right and persist it. Returns the new state.
+
+    The Flip button behind this is the escape hatch for a mirrored preview -
+    the exact fault this module's header describes, which shipped twice
+    because it is invisible in a still frame. If it ever comes back on some
+    handset, the farmer can undo it in one tap instead of waiting for a
+    release.
+    """
     mirror = not bool(app_settings.get("camera_mirror", False))
     app_settings.set("camera_mirror", mirror)
     return mirror
@@ -179,11 +202,12 @@ def texture_to_pil(texture, vflip, rotation_cw, mirror):
     it baked in the letterbox bars and threw away sensor resolution. Here
     we get the full frame at native resolution, already oriented.
 
-    Note the extra flip: Kivy textures are stored bottom-row-first, so the
+    Note the flip below: Kivy textures are stored bottom-row-first, so the
     raw bytes are themselves upside down relative to what is drawn. That is
-    a texture-memory detail, entirely separate from the Android Fbo flip
-    that `vflip` corrects, and both have to be undone to land on the image
-    the farmer actually saw.
+    a texture-memory detail about how the pixels are handed to us, and has
+    nothing to do with the `vflip` stage - undoing it is simply what turns
+    the byte buffer back into the frame the preview showed, before the same
+    (vflip, rotation, mirror) triple is applied to both alike.
     """
     from PIL import Image
 

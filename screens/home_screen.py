@@ -14,7 +14,8 @@ Camera handling is platform-aware:
 On Android the preview is wrapped in an OrientedCamera, because Kivy hands
 back the raw landscape sensor frame with no rotation applied - which is why
 the camera appeared sideways until the phone itself was turned. The Rotate
-button on this screen adjusts and persists that correction per device.
+and Flip buttons on this screen adjust and persist that correction per
+device, for the handsets whose reported sensor orientation is wrong.
 """
 
 import os
@@ -85,10 +86,12 @@ class HomeScreen(Screen):
                 self._using_native_camera = False
 
             # Kivy does no orientation handling for the Android camera, so
-            # the preview arrives sideways (landscape sensor) and flipped.
-            # OrientedCamera corrects it, and capture_image() reuses the
-            # very same transform so the saved photo matches the preview.
-            # See utils/camera_transform.py for the full derivation.
+            # the preview arrives sideways - the raw landscape sensor frame,
+            # unrotated but otherwise untouched. OrientedCamera turns it
+            # upright, and capture_image() reuses the very same transform so
+            # the saved photo matches the preview. See
+            # utils/camera_transform.py for the full derivation, including
+            # why correcting anything BEYOND the rotation mirrors the frame.
             vflip, rotation, mirror = camera_transform.current_transform(
                 camera_index=0, native_android=self._using_native_camera
             )
@@ -117,6 +120,22 @@ class HomeScreen(Screen):
         offset = camera_transform.cycle_rotation_offset(90)
         self._refresh_orientation()
         self._show_status(f"Camera rotated ({offset}°) — saved for next time.")
+
+    def flip_camera(self):
+        """Mirror the preview left-to-right and remember it.
+
+        Separate from Rotate because it fixes a different fault, and one the
+        farmer notices in a different way: a rotation is obvious the moment
+        the preview appears, but a mirrored frame looks like a perfectly
+        normal photo until you move the phone and the scene slides the wrong
+        way. utils/camera_transform explains why that is easy to introduce
+        by accident; this is the one-tap way out of it on a device we never
+        got to test.
+        """
+        mirrored = camera_transform.toggle_mirror()
+        self._refresh_orientation()
+        self._show_status("Camera flipped — saved for next time." if mirrored
+                          else "Camera flip removed — saved for next time.")
 
     def _refresh_orientation(self):
         if getattr(self, "_oriented", None) is None:
