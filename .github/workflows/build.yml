@@ -64,10 +64,124 @@ jobs:
           pip install --upgrade pip
           pip install buildozer cython==0.29.36
 
+      - name: Prefetch freetype from a working mirror
+        working-directory: /tmp/fdcs
+        # python-for-android's freetype recipe hardcodes
+        # download.savannah.gnu.org, and Savannah has now killed two builds
+        # of an unmodified tree with 502/504. It stays down for tens of
+        # minutes at a stretch, so p4a's four retries over ~15 seconds - and
+        # a workflow-level retry too - are simply the wrong tool: you cannot
+        # retry your way onto a host that is off.
+        #
+        # freetype ships the identical tarball on SourceForge (the recipe's
+        # own docstring points there) and across the nongnu mirror network.
+        # p4a's Recipe.download() skips the download whenever the file is
+        # already in its packages directory, so dropping it there in advance
+        # is enough - no recipe override, no patched URL, nothing that has to
+        # track p4a's internals beyond the path.
+        #
+        # SECURITY: the freetype recipe declares no checksum, so p4a will not
+        # verify whatever a mirror hands it. The digest below is pinned here
+        # and checked before the file is trusted; it was verified
+        # byte-identical from two independent mirrors.
+        #
+        # Keyed to the version p4a currently pins (2.14.1). If p4a moves to a
+        # newer freetype the filename no longer matches, this step seeds a
+        # file nothing reads, and the build falls back to Savannah plus the
+        # retry loop below. Degraded, but not broken - and the log says so.
+        run: |
+          version=2.14.1
+          sha256=174d9e53402e1bf9ec7277e22ec199ba3e55a6be2c0740cb18c0ee9850fc8c34
+          tarball=freetype-$version.tar.gz
+          tmp=$(mktemp -d)
+
+          got=""
+          for url in \
+            "https://downloads.sourceforge.net/project/freetype/freetype2/$version/$tarball" \
+            "https://mirror.csclub.uwaterloo.ca/nongnu/freetype/$tarball" \
+            "https://download-mirror.savannah.gnu.org/releases/freetype/$tarball"; do
+            echo "Trying $url"
+            if curl -fsSL --retry 3 --retry-all-errors --max-time 180 -o "$tmp/$tarball" "$url" \
+               && echo "$sha256  $tmp/$tarball" | sha256sum -c - > /dev/null; then
+              echo "Fetched and verified $tarball"
+              got=yes
+              break
+            fi
+            echo "  unusable (download failed or digest mismatch) - next mirror"
+            rm -f "$tmp/$tarball"
+          done
+
+          if [ -z "$got" ]; then
+            echo "::warning::Could not prefetch $tarball from any mirror; buildozer will try Savannah itself."
+            exit 0
+          fi
+
+          # Read the arch list from the spec rather than hardcoding it, so
+          # this keeps seeding the right directories if the spec gains one.
+          archs=$(sed -n 's/^[[:space:]]*android\.archs[[:space:]]*=[[:space:]]*//p' buildozer.spec | tr -d '[:space:]' | tr ',' ' ')
+          archs=${archs:-arm64-v8a}
+          for arch in $archs; do
+            dest=".buildozer/android/platform/build-$arch/packages/freetype"
+            mkdir -p "$dest"
+            cp "$tmp/$tarball" "$dest/$tarball"
+            echo "Seeded $dest/$tarball"
+          done
+
       - name: Build APK with Buildozer
         working-directory: /tmp/fdcs
+        # python-for-android allows a failed source download only four tries
+        # across ~15 seconds and then aborts the whole build. Some of the
+        # mirrors it pulls from are unreliable - download.savannah.gnu.org,
+        # which hosts freetype, has returned 502/504 for long enough to kill
+        # a build of an unmodified tree. That is a red build that says
+        # nothing about the code.
+        #
+        # Retrying costs almost nothing because buildozer is incremental:
+        # python-for-android marks each tarball it has fetched and each
+        # recipe it has built under .buildozer, so attempt two re-downloads
+        # only the file the outage interrupted and resumes from there.
+        #
+        # Only NETWORK failures are retried. Retrying everything would
+        # rebuild a genuine compile error three times over, turning a
+        # 4-minute red build into a 40-minute one and burying the real
+        # message under two repeats - so the log has to actually name a
+        # transport fault before we go round again.
         run: |
-          yes | buildozer -v android debug
+          attempt=1
+          max=3
+          while true; do
+            echo "::group::Buildozer attempt $attempt of $max"
+            # `yes` answers buildozer's prompts and is then killed by SIGPIPE
+            # when buildozer stops reading, so its exit status is noise -
+            # PIPESTATUS[1] is buildozer's own. This is also why `set -o
+            # pipefail` must NOT be used here: it would read that broken pipe
+            # as a failed build on every successful run.
+            yes | buildozer -v android debug 2>&1 | tee "attempt-$attempt.log"
+            status=${PIPESTATUS[1]}
+            echo "::endgroup::"
+
+            if [ "$status" -eq 0 ]; then
+              echo "Build succeeded on attempt $attempt."
+              exit 0
+            fi
+
+            if [ "$attempt" -ge "$max" ]; then
+              echo "::error::Build failed after $attempt attempts."
+              exit "$status"
+            fi
+
+            if grep -qiE 'Download failed|HTTPError|URLError|Bad Gateway|Gateway Time-out|Connection reset|Connection refused|Temporary failure in name resolution|TimeoutError|IncompleteRead|Network is unreachable' "attempt-$attempt.log"; then
+              backoff=$((attempt * 60))
+              echo "Attempt $attempt died fetching a dependency, not building one."
+              echo "Retrying in ${backoff}s - buildozer resumes from what it already has."
+              rm -f "attempt-$attempt.log"
+              sleep "$backoff"
+              attempt=$((attempt + 1))
+            else
+              echo "::error::Attempt $attempt failed for a reason that is not a network fault. Not retrying - the real error is in the log above."
+              exit "$status"
+            fi
+          done
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

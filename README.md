@@ -556,6 +556,37 @@ and are weak for the same reason, too few training images.
   in [numpy/numpy#29662](https://github.com/numpy/numpy/pull/29662)
   (merged Sept 2025). Any numpy release after that fix works.
 
+- **`HTTP Error 502: Bad Gateway` downloading freetype**, on a tree with no
+  build-related changes at all. python-for-android's freetype recipe
+  hardcodes `download.savannah.gnu.org`, and Savannah goes down for tens of
+  minutes at a time; p4a allows a failed download only four retries across
+  ~15 seconds and then aborts the entire build. Two consecutive builds died
+  this way, both at ~4 minutes — long before any app code was compiled, which
+  is the tell: a real code error cannot fail during dependency *download*.
+  Fixed with two steps in `.github/workflows/build.yml`:
+  - **`Prefetch freetype from a working mirror`** downloads the identical
+    tarball from SourceForge (which the recipe's own docstring points at) or
+    the nongnu mirror network, and drops it into p4a's packages directory.
+    `Recipe.download()` skips the download when the file is already there, so
+    this needs no recipe override or patched URL. The freetype recipe
+    declares **no checksum**, so p4a would not notice a substituted file —
+    the SHA-256 is therefore pinned in the workflow and verified before the
+    file is trusted. If all mirrors are down the step warns and does nothing,
+    rather than becoming a new way for the build to fail.
+  - **A retry loop around buildozer**, which retries *only* when the log
+    names a transport fault. Retrying everything would rebuild a genuine
+    compile error three times over, turning a 4-minute red build into a
+    40-minute one with the real message buried under two repeats.
+
+  `tests/test_workflow.sh` extracts both `run:` blocks straight out of
+  `build.yml` and exercises them against stubbed `curl`/`buildozer` — mirror
+  fallback, a rejected digest, a total outage, a genuine build error that
+  must *not* be retried. Worth having because the APK build is a 20-minute
+  round trip, so a typo in a shell step otherwise costs 20 minutes to find.
+  One assertion is subtle: the retry loop must **not** use `set -o pipefail`,
+  because `yes | buildozer` leaves `yes` dying of `SIGPIPE`, and pipefail
+  would read that as a failed build on every *successful* run.
+
 If the GitHub Actions build fails on something else entirely, paste the
 failed step's log (Actions tab → the failed run → the red "Build APK with
 Buildozer" step) and it can be diagnosed the same way these were: search

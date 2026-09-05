@@ -24,3 +24,6 @@ data/dataset/*
 train/eval_negatives/
 train/_eval_scratch/
 tests/_tmp/
+
+# Large fixtures downloaded on demand by tests/test_workflow.sh
+tests/_cache/
