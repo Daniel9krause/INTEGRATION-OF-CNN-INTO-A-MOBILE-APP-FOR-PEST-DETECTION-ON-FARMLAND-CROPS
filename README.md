@@ -566,13 +566,30 @@ and are weak for the same reason, too few training images.
   Fixed with two steps in `.github/workflows/build.yml`:
   - **`Prefetch freetype from a working mirror`** downloads the identical
     tarball from SourceForge (which the recipe's own docstring points at) or
-    the nongnu mirror network, and drops it into p4a's packages directory.
-    `Recipe.download()` skips the download when the file is already there, so
-    this needs no recipe override or patched URL. The freetype recipe
-    declares **no checksum**, so p4a would not notice a substituted file —
-    the SHA-256 is therefore pinned in the workflow and verified before the
-    file is trusted. If all mirrors are down the step warns and does nothing,
-    rather than becoming a new way for the build to fail.
+    the nongnu mirror network, and drops it into p4a's packages directory
+    **together with its `.mark-` marker file**. That marker is not optional,
+    and getting it wrong cost a third red build: `Recipe.download()` accepts
+    a pre-existing tarball only when both are present, and treats one without
+    a marker as an interrupted download —
+
+    ```python
+    if exists(filename) and isfile(filename):
+        if not exists(marker_filename):
+            shprint(sh.rm, filename)      # deletes it, then re-downloads
+        else:
+            ...verify digests...
+            do_download = False
+    ```
+
+    — so the first version of this step watched p4a delete the file it had
+    just seeded and go straight back to the dead mirror. Seeding both needs
+    no recipe override and no patched URL.
+
+    The freetype recipe declares **no checksum**, so p4a would not notice a
+    substituted file — the SHA-256 is therefore pinned in the workflow and
+    verified before the file is trusted. If all mirrors are down the step
+    warns and does nothing, rather than becoming a new way for the build to
+    fail.
   - **A retry loop around buildozer**, which retries *only* when the log
     names a transport fault. Retrying everything would rebuild a genuine
     compile error three times over, turning a 4-minute red build into a
@@ -583,9 +600,20 @@ and are weak for the same reason, too few training images.
   fallback, a rejected digest, a total outage, a genuine build error that
   must *not* be retried. Worth having because the APK build is a 20-minute
   round trip, so a typo in a shell step otherwise costs 20 minutes to find.
-  One assertion is subtle: the retry loop must **not** use `set -o pipefail`,
-  because `yes | buildozer` leaves `yes` dying of `SIGPIPE`, and pipefail
-  would read that as a failed build on every *successful* run.
+
+  Two of its assertions are worth calling out, because both guard mistakes
+  that were actually made here:
+
+  - The prefetch checks go through `p4a_verdict()`, a transcription of
+    `Recipe.download()`'s acceptance rule, rather than merely checking that
+    a file landed in the right directory. The first version of the test did
+    the latter and passed while the real build still re-downloaded — proving
+    the script did what it was told, which says nothing about whether the
+    tool downstream accepts the result. Deleting the `touch` from the
+    workflow now fails six assertions.
+  - The retry loop must **not** use `set -o pipefail`, because
+    `yes | buildozer` leaves `yes` dying of `SIGPIPE`, and pipefail would
+    read that as a failed build on every *successful* run.
 
 If the GitHub Actions build fails on something else entirely, paste the
 failed step's log (Actions tab → the failed run → the red "Build APK with

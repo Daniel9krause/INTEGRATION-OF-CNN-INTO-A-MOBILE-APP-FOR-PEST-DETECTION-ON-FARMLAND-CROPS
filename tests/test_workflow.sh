@@ -19,6 +19,16 @@
 # tarball is cached under tests/_cache/ (gitignored) and downloaded on first
 # run; if it cannot be fetched, the prefetch section skips and says so.
 #
+# The prefetch assertions go through p4a_verdict(), a transcription of
+# python-for-android's own Recipe.download() acceptance rule, rather than
+# just checking that a file landed somewhere. The first version of this test
+# asserted "the tarball is in the right directory", which passed while the
+# real build still re-downloaded: p4a treats a tarball with no `.mark-` file
+# beside it as an interrupted download and DELETES it. Asserting that our
+# own script did what we told it to proves nothing about whether the tool
+# downstream will accept the result - so the rule that actually decides it
+# is modelled here, and pinned to the source it came from.
+#
 # Run:  bash tests/test_workflow.sh
 
 set -u
@@ -92,6 +102,37 @@ seeded_path() {
     echo "$WORK/repo/.buildozer/android/platform/build-$1/packages/freetype/freetype-$FT_VERSION.tar.gz"
 }
 
+# A faithful transcription of python-for-android's Recipe.download(), from
+# pythonforandroid/recipe.py at the p4a version buildozer.spec pins
+# (p4a.commit = v2026.05.09; identical on develop):
+#
+#     do_download = True
+#     marker_filename = '.mark-{}'.format(filename)
+#     if exists(filename) and isfile(filename):
+#         if not exists(marker_filename):
+#             shprint(sh.rm, filename)
+#         else:
+#             ...verify digests (the freetype recipe declares none)...
+#             do_download = False
+#
+# Echoes "download" or "use-cached", and performs the same rm side effect,
+# so a test can assert both the decision and that the file survives it.
+p4a_verdict() {
+    local tarball="$1"
+    local marker
+    marker="$(dirname "$tarball")/.mark-$(basename "$tarball")"
+    if [ -f "$tarball" ]; then
+        if [ ! -f "$marker" ]; then
+            rm -f "$tarball"          # p4a reads this as a partial download
+            echo "download"
+        else
+            echo "use-cached"
+        fi
+    else
+        echo "download"
+    fi
+}
+
 # --- the prefetch step ---------------------------------------------------
 echo
 echo "prefetch: mirror fallback and the digest check p4a does not do"
@@ -141,12 +182,21 @@ EOF
     check "seeds the tarball where p4a looks for it" "$([ -f "$s" ] && echo yes || echo no)" "yes"
     check "the seeded file is byte-identical to the real one" \
           "$(cmp -s "$s" "$REAL_TARBALL" && echo same || echo differs)" "same"
+    # The assertion that matters, and the one the first version of this
+    # test was missing: p4a must ACCEPT what we seeded.
+    check "seeds the .mark- marker p4a requires" \
+          "$([ -f "$(dirname "$s")/.mark-$(basename "$s")" ] && echo yes || echo no)" "yes"
+    check "p4a would skip the download entirely" "$(p4a_verdict "$s")" "use-cached"
+    check "and the seeded file survives p4a's partial-download check" \
+          "$([ -f "$s" ] && echo yes || echo no)" "yes"
 
     # 2. The outage that started all this: first mirror dead, fall through.
     fresh_repo
     export GOOD_MIRROR="uwaterloo.ca" CORRUPT_MIRROR=""
     out=$(run prefetch.sh 2>&1); check "exits 0 when it has to fall through" "$?" "0"
     check "still seeds the tarball" "$([ -f "$(seeded_path arm64-v8a)" ] && echo yes || echo no)" "yes"
+    check "p4a accepts the fallback mirror's copy too" \
+          "$(p4a_verdict "$(seeded_path arm64-v8a)")" "use-cached"
     check "logs the dead mirror" "$(echo "$out" | grep -c 'unusable')" "1"
 
     # 3. The security-relevant one. p4a's freetype recipe declares no
@@ -174,8 +224,25 @@ EOF
     for a in armeabi-v7a arm64-v8a; do
         check "seeds $a, as named in buildozer.spec" \
               "$([ -f "$(seeded_path "$a")" ] && echo yes || echo no)" "yes"
+        check "p4a would use the cached copy for $a" \
+              "$(p4a_verdict "$(seeded_path "$a")")" "use-cached"
     done
 fi
+
+    # 6. The regression, stated directly. A tarball seeded WITHOUT its
+    #    marker is deleted by p4a and re-downloaded from the dead mirror -
+    #    which is precisely how the first attempt at this step failed, and
+    #    it failed invisibly, because the file really was in the right
+    #    place. If someone drops the `touch` from the workflow, this is the
+    #    assertion that catches it.
+    fresh_repo
+    export GOOD_MIRROR="sourceforge.net" CORRUPT_MIRROR=""
+    run prefetch.sh > /dev/null 2>&1
+    s=$(seeded_path arm64-v8a)
+    rm -f "$(dirname "$s")/.mark-$(basename "$s")"
+    check "without the marker, p4a re-downloads" "$(p4a_verdict "$s")" "download"
+    check "and deletes the seeded file on the way" \
+          "$([ -f "$s" ] && echo yes || echo no)" "no"
 
 # --- the retry loop ------------------------------------------------------
 echo

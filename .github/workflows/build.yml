@@ -74,11 +74,24 @@ jobs:
         # retry your way onto a host that is off.
         #
         # freetype ships the identical tarball on SourceForge (the recipe's
-        # own docstring points there) and across the nongnu mirror network.
-        # p4a's Recipe.download() skips the download whenever the file is
-        # already in its packages directory, so dropping it there in advance
-        # is enough - no recipe override, no patched URL, nothing that has to
-        # track p4a's internals beyond the path.
+        # own docstring points there) and across the nongnu mirror network,
+        # so the fix is to put the file where p4a looks before it looks.
+        #
+        # p4a's Recipe.download() accepts a pre-existing download only when
+        # BOTH the tarball and its `.mark-<tarball>` marker are present:
+        #
+        #     if exists(filename) and isfile(filename):
+        #         if not exists(marker_filename):
+        #             shprint(sh.rm, filename)      # treated as a partial
+        #         else:
+        #             ...verify digests...
+        #             do_download = False
+        #
+        # A tarball with no marker is read as an interrupted download and
+        # deleted, which is exactly what happened to the first version of
+        # this step. Seeding both needs no recipe override and no patched
+        # URL - the only p4a internals it depends on are that path and this
+        # rule, and tests/test_workflow.sh pins the rule.
         #
         # SECURITY: the freetype recipe declares no checksum, so p4a will not
         # verify whatever a mirror hands it. The digest below is pinned here
@@ -124,7 +137,12 @@ jobs:
             dest=".buildozer/android/platform/build-$arch/packages/freetype"
             mkdir -p "$dest"
             cp "$tmp/$tarball" "$dest/$tarball"
-            echo "Seeded $dest/$tarball"
+            # The marker is not optional. p4a's Recipe.download() treats a
+            # tarball with no .mark- file beside it as a partial download and
+            # deletes it - the first version of this step seeded the file
+            # without one and watched p4a `rm` it and go back to Savannah.
+            touch "$dest/.mark-$tarball"
+            echo "Seeded $dest/$tarball (+ marker)"
           done
 
       - name: Build APK with Buildozer
